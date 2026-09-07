@@ -86,7 +86,9 @@ Test("invalid replacement preserves existing database", () => {
 NativeTests.Run(Test, Reject);
 SerializedTests.Run(Test, Reject);
 SerializedReferenceTests.Run(Test, Reject);
+CharacterTests.Run(Test, Reject);
 TextureTests.Run(Test, Reject);
+NprTests.Run(Test, Reject);
 if (args.Length == 1)
 {
     Directory.CreateDirectory(args[0]);
@@ -100,4 +102,3 @@ catch (Exception error)
     Console.Error.WriteLine(error);
     Environment.ExitCode = 1;
 }
-

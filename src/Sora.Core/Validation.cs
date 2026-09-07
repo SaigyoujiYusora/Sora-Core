@@ -39,7 +39,8 @@ public static class Validation
         for (var index = 0; index < scene.Bones!.Length; index++)
         {
             var bone = scene.Bones[index]; Require(bone is not null, "Null bone");
-            Name(bone!.Name); Require(names.Add(bone.Name), "Duplicate bone name");
+            if(bone!.SourcePath is not null && bone.SourcePath.Length!=0) Name(bone.SourcePath);
+            Name(bone.Name); Require(names.Add(bone.Name), "Duplicate bone name");
             Require(System.Text.Encoding.UTF8.GetByteCount(bone.Name) <= 63, "Bone name exceeds Blender's UTF-8 limit");
             Require(bone.Parent >= -1 && bone.Parent < index, "Skeleton must be parent before child");
             Vector(bone.Head, 3); Vector(bone.Tail, 3);
@@ -55,6 +56,12 @@ public static class Validation
             }
             Require(bone.Head.Zip(bone.Tail, (a, b) => (a - b) * (a - b)).Sum() > 1e-16, "Zero length bone");
         }
+        if(scene.HeadReference is { } head) {
+            Require(head.Bone>=0 && head.Bone<scene.Bones.Length,"Invalid head bone index"); Name(head.Name); Name(head.NativePath); Vector(head.RestMatrix,16);
+            var bone=scene.Bones[head.Bone];
+            Require(head.Name==bone.Name && head.NativePath==bone.SourcePath && bone.RestMatrix is not null && head.RestMatrix.SequenceEqual(bone.RestMatrix),"Head reference provenance mismatch");
+            Require(head.Status=="native-head-axes-unverified","Unsupported head axes status");
+        }
         names.Clear();
         var textureNames = new HashSet<string>(StringComparer.Ordinal);
         long textureBytes = 0;
@@ -68,9 +75,25 @@ public static class Validation
             Require(texture.Png.AsSpan(0, 8).SequenceEqual(new byte[] {137, 80, 78, 71, 13, 10, 26, 10}) && texture.Png.AsSpan(12, 4).SequenceEqual("IHDR"u8), "Invalid PNG header");
             Require(System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(texture.Png.AsSpan(16)) == texture.Width && System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(texture.Png.AsSpan(20)) == texture.Height, "PNG dimensions disagree with texture record");
         }
+        var descriptorIds = new HashSet<string>(StringComparer.Ordinal);
+        Require(scene.TextureDescriptors is null || scene.TextureDescriptors.Length <= 512, "Texture descriptor limit exceeded");
+        foreach(var descriptor in scene.TextureDescriptors ?? []) {
+            Require(descriptor is not null,"Null texture descriptor"); Name(descriptor!.Id); Require(descriptorIds.Add(descriptor.Id),"Duplicate texture descriptor"); Identity(descriptor.Source);
+            Require(descriptor.Dimension is "2D" or "Cube" or "Unknown", "Invalid texture dimension");
+            Require(descriptor.Width >= 0 && descriptor.Height >= 0 && descriptor.Width <= 16384 && descriptor.Height <= 16384, "Invalid descriptor dimensions");
+            Name(descriptor.ColorSpace); Name(descriptor.Channels); Name(descriptor.AlphaMode);
+            foreach(var sampler in new[]{descriptor.WrapU,descriptor.WrapV,descriptor.Filter}) if(sampler is not null) Name(sampler);
+            Require(descriptor.DecodeStatus is "decoded" or "unsupported", "Invalid decode status");
+            if(descriptor.NativeFormat is 24 or 26 or 27) Require(descriptor.Channels==(descriptor.NativeFormat==24?"RGB":descriptor.NativeFormat==26?"R":"RG") && descriptor.AlphaMode=="none","Native channel semantics mismatch");
+            if(descriptor.NativeFormat==24) Require(descriptor.DecodeStatus=="unsupported" && descriptor.PayloadRef is null,"BC6H HDR cannot use 8-bit PNG transport");
+            Require(descriptor.PayloadRef is null || textureNames.Contains(descriptor.PayloadRef), "Missing descriptor payload");
+            Require((descriptor.DecodeStatus == "decoded") == (descriptor.PayloadRef is not null), "Decode payload status mismatch");
+            if(descriptor.PayloadRef is not null) { var payload = scene.Textures!.Single(x=>x.Name==descriptor.PayloadRef); Require(payload.Width==descriptor.Width && payload.Height==descriptor.Height,"Descriptor dimensions disagree"); }
+        }
         foreach (var material in scene.Materials!)
         {
             Require(material is not null, "Null material"); Name(material!.Name);
+            if(material.Npr is not null) Npr(material.Npr, descriptorIds, textureNames);
             Require(names.Add(material.Name), "Duplicate material name"); Vector(material.BaseColor, 4);
             Require(material.BaseColor.All(x => x >= 0 && x <= 1), "Color outside unit range");
             Require(double.IsFinite(material.Metallic) && material.Metallic >= 0 && material.Metallic <= 1 &&
@@ -92,6 +115,13 @@ public static class Validation
             foreach (var normal in mesh.Normals) { Vector(normal, 3); Require(Math.Abs(normal.Sum(x => x * x) - 1) < 1e-4, "Normal must be normalized"); }
             Require(mesh.Uv!.Length == 0 || mesh.Uv.Length == mesh.Positions.Length, "UV count mismatch");
             foreach (var uv in mesh.Uv) Vector(uv, 2);
+            if(mesh.SourceId is not null) Name(mesh.SourceId);
+            if(mesh.UvSets is not null) {
+                Require(mesh.UvSets.Length<=8,"UV set limit exceeded"); var sets=new HashSet<int>();
+                foreach(var set in mesh.UvSets) { Require(set is not null && set.Set>=0 && set.Set<8 && sets.Add(set.Set),"Invalid UV set"); Require(set!.Values is not null && set.Values.Length==mesh.Positions.Length,"UV set count mismatch"); Require(set.NativeDimension is null || (set.NativeDimension >= 0 && set.NativeDimension <= 255 && (set.NativeDimension & 15) is >= 1 and <= 4), "Invalid native UV dimension"); Require(set.NativeFormat is null || set.NativeFormat is >= 0 and <= 11,"Invalid native UV format"); foreach(var row in set.Values!) { Require(row is not null && row.Length>=1 && row.Length<=4,"Invalid UV row"); Vector(row,row!.Length); } }
+            }
+            if(mesh.Tangents is not null) { Require(mesh.Tangents.Length==mesh.Positions.Length,"Tangent count mismatch"); foreach(var row in mesh.Tangents) {Vector(row,4); Require(Math.Abs(row.Take(3).Sum(x=>x*x)-1)<1e-4 && Math.Abs(Math.Abs(row[3])-1)<1e-4,"Invalid tangent");} }
+            if(mesh.Colors is not null) { Require(mesh.Colors.Length==mesh.Positions.Length,"Color count mismatch"); foreach(var row in mesh.Colors) Vector(row,4); }
             Require(mesh.Material >= -1 && mesh.Material < scene.Materials.Length, "Invalid material reference");
             Require((mesh.MaterialSlots is null) == (mesh.TriangleSlots is null), "Material slots and triangle slots must be supplied together");
             if (mesh.MaterialSlots is not null)
@@ -145,4 +175,37 @@ public static class Validation
             }
         }
     }
+    static void Identity(NativeIdentity? id) { Require(id is not null,"Missing native identity"); Name(id!.Cab); PathId(id.PathId); }
+    static void PathId(string? id) => Require(id is not null && long.TryParse(id, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture,out _),"Invalid signed path ID");
+    static void Map<T>(Dictionary<string,T>? map) { Require(map is not null && map.Count<=4096,"Invalid NPR map"); foreach(var key in map!.Keys) Name(key); }
+    static void StringList(string[]? items) { Require(items is not null && items.Length<=4096,"Invalid NPR strings"); foreach(var item in items!) Name(item); }
+    static void Npr(MaterialNprDescriptor npr,HashSet<string> descriptors,HashSet<string> payloads) {
+        Require(npr.SchemaVersion==1,"Unsupported NPR schema"); Require(npr.Source is not null,"Missing NPR source"); Identity(npr.Source!.MaterialId); if(npr.Source.ShaderId is not null) Identity(npr.Source.ShaderId);
+        if(npr.Source.ShaderName is not null) Name(npr.Source.ShaderName);
+        Require(npr.Source.ResolutionStatus is "null" or "missing" or "resolved" or "unsupported","Invalid shader resolution");
+        if(npr.Source.ShaderSourceRef is { } shaderRef) {
+            PathId(shaderRef.PathId); Require(shaderRef.FileId>=0,"Invalid shader file ID");
+            Require((npr.Source.ResolutionStatus=="null")== (long.Parse(shaderRef.PathId,System.Globalization.CultureInfo.InvariantCulture)==0),"Shader pointer status mismatch");
+        }
+        Require(npr.Source.ResolutionStatus is not ("null" or "missing") || (npr.Source.ShaderId is null && npr.Source.ShaderName is null),"Unresolved shader has resolved provenance");
+        Require(npr.Source.ResolutionStatus is not ("resolved" or "unsupported") || npr.Source.ShaderId is not null,"Missing resolved shader identity");
+        Require(npr.Part is "Standard" or "Face" or "Eyes" or "Hair" or "Fur" or "Eyebrow" or "VFX" or "OverlayShadow" or "LiquidAg" or "Unknown","Invalid NPR part");
+        Require(npr.PartEvidence is not null,"Missing part evidence"); if(npr.PartEvidence!.ShaderName is not null) Name(npr.PartEvidence.ShaderName); if(npr.PartEvidence.Discriminator is not null) Name(npr.PartEvidence.Discriminator); Require(npr.PartEvidence.Value is null || double.IsFinite(npr.PartEvidence.Value.Value),"Invalid discriminator");
+        Map(npr.Floats); Require(npr.Floats.Values.All(double.IsFinite),"Nonfinite NPR float"); Map(npr.Ints); Map(npr.Colors); foreach(var c in npr.Colors.Values) Vector(c,4);
+        Map(npr.Textures); foreach(var binding in npr.Textures.Values) {
+            Require(binding is not null && binding.SourceRef is not null,"Missing texture binding"); PathId(binding!.SourceRef!.PathId); Require(binding.SourceRef.FileId>=0,"Invalid texture file ID"); Vector(binding.Scale,2); Vector(binding.Offset,2); Require(binding.UvSet>=0 && binding.UvSet<8,"Invalid texture UV set");
+            Require(binding.ScalePresent!=false || binding.Scale.SequenceEqual(new double[]{1,1}),"Absent scale must use documented identity fallback");
+            Require(binding.OffsetPresent!=false || binding.Offset.SequenceEqual(new double[]{0,0}),"Absent offset must use documented zero fallback");
+            Require(binding.UvSetPresent!=false || binding.UvSet==0,"Absent UV set must use documented UV0 fallback");
+            Require(binding.Status is "null" or "missing" or "resolved" or "unsupported","Invalid binding status");
+            Require((binding.Status=="null")== (binding.SourceRef.PathId=="0"),"Null binding mismatch");
+            if(binding.ResolvedId is not null) Name(binding.ResolvedId);
+            Require(binding.TextureId is null || descriptors.Contains(binding.TextureId),"Missing binding descriptor");
+            Require(binding.Status!="resolved" || (binding.ResolvedId is not null && binding.TextureId is not null && payloads.Contains(binding.TextureId)),"Missing resolved payload");
+            Require(binding.Status is not ("null" or "missing") || (binding.TextureId is null && binding.ResolvedId is null),"Unresolved binding has payload");
+        }
+        Require(npr.Keywords is not null && npr.RenderState is not null,"Missing NPR metadata"); StringList(npr.Keywords!.Valid); StringList(npr.Keywords.Invalid); StringList(npr.Keywords.Legacy); Map(npr.RenderState!.Tags); foreach(var value in npr.RenderState.Tags.Values) Require(value is not null && value.Length<=4096,"Invalid tag"); StringList(npr.RenderState.DisabledPasses);
+        Require(npr.Diagnostics is not null && npr.Diagnostics.Length<=4096,"Invalid NPR diagnostics"); foreach(var d in npr.Diagnostics!) { Require(d is not null,"Null diagnostic"); Name(d!.Code); if(d.Property is not null) Name(d.Property); Require(d.Message is not null && d.Message.Length<=16384,"Invalid diagnostic message"); }
+    }
+
 }

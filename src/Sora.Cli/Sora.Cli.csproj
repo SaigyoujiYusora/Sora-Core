@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>Sora-Core</AssemblyName></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Sora.Core/Sora.Core.csproj" /></ItemGroup>
+    <Target Name="RequireNativeDependenciesForPublish" BeforeTargets="PrepareForPublish">
+        <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../native/win-x64/Sora.Acl.dll')" Text="Build Sora.Acl.dll from source and place it in native/win-x64 before publishing. See docs/BUILD.md."/>
+        <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../native/win-x64/Texture2DDecoderNative.dll')" Text="Build Texture2DDecoderNative.dll from its upstream source and place it in native/win-x64 before publishing. See docs/BUILD.md."/>
+    </Target>
+</Project>
