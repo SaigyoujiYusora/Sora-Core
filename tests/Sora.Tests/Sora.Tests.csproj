@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Sora.Core/Sora.Core.csproj" /></ItemGroup>
+  <Target Name="RequireExecutableHarness" BeforeTargets="VSTest">
+    <Error Text="This dependency-free harness runs with: dotnet run --project tests/Sora.Tests -c Release. dotnet test does not execute it." />
+  </Target>
+</Project>
