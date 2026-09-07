@@ -1,0 +1,25 @@
+bin/
+obj/
+artifacts/
+.dotnet/
+*.sredb
+*.user
+
+# Local development history and recovery archives
+/history/
+
+# Local ACL test and provenance materials
+/native-source/acl/positive-fixtures/
+/native-source/acl/runtime-provenance/
+
+# Source-only repository: native dependencies and compiled binaries stay local
+/native/
+*.dll
+*.exe
+*.pdb
+*.so
+*.dylib
+*.lib
+*.a
+*.o
+*.obj
