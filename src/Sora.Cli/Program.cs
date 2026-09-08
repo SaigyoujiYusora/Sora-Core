@@ -114,7 +114,7 @@ static string Handle(string line)
         var parameters = root.GetProperty("params");
         Validation.Require(parameters.ValueKind == JsonValueKind.Object, "Params must be an object");
         object result;
-        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene" }, nativeGameExtraction = true, nativeExtraction = new { entryPoint = "CLI import-character", geometry = true, materials = "native descriptors and textures", humanoidAnimation = false, authoredFaceControls = false, maps = false, verifiedCharacters = new[] { "azrila" } } };
+        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene" }, nativeGameExtraction = true, nativeExtraction = new { entryPoint = "CLI import-character", geometry = true, materials = "native descriptors and textures", humanoidAnimation = false, authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila" } } };
         else
         {
             Validation.Require(method is "inspect" or "search" or "closure" or "scene", "Unsupported method");

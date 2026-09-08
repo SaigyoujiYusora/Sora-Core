@@ -119,6 +119,7 @@ public static class Validation
             Require(head.Name==bone.Name && head.NativePath==bone.SourcePath && bone.RestMatrix is not null && head.RestMatrix.SequenceEqual(bone.RestMatrix),"Head reference provenance mismatch");
             Require(head.Status=="native-head-axes-unverified","Unsupported head axes status");
         }
+        if(scene.FaceDriver is {} face) NativeFaceMorph.Validate(face,scene);
         names.Clear();
         var textureNames = new HashSet<string>(StringComparer.Ordinal);
         long textureBytes = 0;

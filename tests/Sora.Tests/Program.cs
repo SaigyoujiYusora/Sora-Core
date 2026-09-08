@@ -90,6 +90,7 @@ CharacterTests.Run(Test, Reject);
 TextureTests.Run(Test, Reject);
 NprTests.Run(Test, Reject);
 ResourceIndexTests.Run(Test, Reject);
+FaceMorphTests.Run(Test, Reject);
 if (args.Length == 1)
 {
     Directory.CreateDirectory(args[0]);

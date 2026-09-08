@@ -87,7 +87,8 @@ public static class NativeCharacterImport
             outputMeshes.Add(mesh with { Material = slots[0], MaterialSlots = slots.ToArray(), SourceId = meshIdentities[mesh.Name] });
         }
         scene = scene with { Meshes = outputMeshes.ToArray(), Materials = materials.ToArray(), Textures = textures.Values.ToArray(), TextureDescriptors = descriptors.Values.ToArray() };
-        database = new(resources.Manifest.Version, [database.Assets[0] with { Detail = "Native geometry and base/normal materials; original animation and face presets are not included", Scene = scene }]);
+        scene = scene with { FaceDriver = NativeFaceMorph.Extract(resources, prefab.Path, avatar, scene) };
+        database = new(resources.Manifest.Version, [database.Assets[0] with { Detail = "Native geometry, materials and authored facial controls; body animation not included", Scene = scene }]);
         Validation.Database(database); return database;
     }
 
