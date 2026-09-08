@@ -35,7 +35,7 @@ Test("all truncated header boundaries", () => { for (int i = 0; i < 52; i++) Rej
 Test("truncated payload", () => Reject(() => DatabaseFile.Read(new MemoryStream(encoded[..^1]))));
 Test("trailing payload", () => Reject(() => DatabaseFile.Read(new MemoryStream([.. encoded, 0]))));
 Test("hash corruption", () => { var data = (byte[])encoded.Clone(); data[^1] ^= 1; Reject(() => DatabaseFile.Read(new MemoryStream(data))); });
-Test("unknown version", () => { var data = (byte[])encoded.Clone(); data[8] = 2; Reject(() => DatabaseFile.Read(new MemoryStream(data))); });
+Test("unknown version", () => { var data = (byte[])encoded.Clone(); data[8] = 3; Reject(() => DatabaseFile.Read(new MemoryStream(data))); });
 Test("old RCM6 input", () => { var data = (byte[])encoded.Clone(); Encoding.ASCII.GetBytes("6MCR").CopyTo(data, 0); Reject(() => DatabaseFile.Read(new MemoryStream(data))); });
 Test("oversized length", () => { var data = (byte[])encoded.Clone(); Array.Fill(data, (byte)255, 12, 8); Reject(() => DatabaseFile.Read(new MemoryStream(data))); });
 Test("empty JSON", () => Reject(() => DatabaseFile.ParsePayload([])));
@@ -89,6 +89,7 @@ SerializedReferenceTests.Run(Test, Reject);
 CharacterTests.Run(Test, Reject);
 TextureTests.Run(Test, Reject);
 NprTests.Run(Test, Reject);
+ResourceIndexTests.Run(Test, Reject);
 if (args.Length == 1)
 {
     Directory.CreateDirectory(args[0]);

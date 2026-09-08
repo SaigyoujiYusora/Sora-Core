@@ -14,12 +14,14 @@ public sealed class GameResources
     private readonly HashSet<int> loaded = [];
     private readonly Dictionary<int, string[]> bundleCabs = [];
     private long decodedBytes;
+    private readonly string sourceRoot;
     public NativeManifest Manifest { get; }
 
     public GameResources(string root)
     {
         root = Path.GetFullPath(root);
         string data = Directory.Exists(Path.Combine(root, "Endfield_Data")) ? Path.Combine(root, "Endfield_Data") : root;
+        sourceRoot = data;
         var unavailable = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         var physicalSources = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (string location in new[] { "Persistent", "StreamingAssets" })
@@ -85,6 +87,32 @@ public sealed class GameResources
         using var archive = new VfsArchive(BlockIndex.Extract(locator.Source.Index, locator.Source.Resource));
         var document = SerializedAssets.Decode(archive.Extract(locator.Entry.Name));
         documents.Add(cab, document); decodedBytes += locator.Entry.Size; return document;
+    }
+
+    public EndfieldResourceIndex SnapshotResourceIndex()
+    {
+        var sources = new List<ResourceFileRecord>();
+        var sourceIds = new Dictionary<Source, int>();
+        var rows = new List<CabResourceRecord>();
+        foreach (var pair in cabs.OrderBy(x => x.Key, StringComparer.Ordinal))
+        {
+            var location = pair.Value;
+            if (!sourceIds.TryGetValue(location.Source, out int file))
+            {
+                file = sources.Count; sourceIds.Add(location.Source, file);
+                sources.Add(new(Path.GetRelativePath(sourceRoot, location.Source.Index).Replace('\\', '/'),
+                    location.Source.Resource with { Name = location.Source.Resource.Name.Replace('\\', '/'), Chunk = location.Source.Resource.Chunk.Replace('\\', '/') }));
+            }
+            rows.Add(documents.TryGetValue(pair.Key, out var document)
+                ? ResourceIndexMetadata.Decoded(pair.Key, file, location.Entry, document)
+                : new(pair.Key, "indexed", file, location.Entry, null, null, null));
+        }
+        var identities = rows.Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string missing in rows.SelectMany(x => x.Dependencies ?? []).Distinct(StringComparer.OrdinalIgnoreCase).Where(x => !identities.Contains(x)).Order(StringComparer.Ordinal).ToArray())
+            rows.Add(new(missing, "unresolved", null, null, null, null, null));
+        var result = new EndfieldResourceIndex(sourceRoot, Manifest.Hash, Manifest.Revision, sources.ToArray(), rows.ToArray());
+        Validation.ResourceIndex(result);
+        return result;
     }
 
     public ResolvedAsset? Resolve(string ownerCab, JsonElement pointer)

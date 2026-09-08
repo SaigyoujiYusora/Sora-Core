@@ -13,6 +13,7 @@ public static class Validation
 
     public static void Database(DatabaseDocument database)
     {
+        if (database.ResourceIndex is not null) ResourceIndex(database.ResourceIndex);
         Name(database.GameVersion);
         Require(database.Assets is not null && database.Assets.Length <= 1_000_000, "Invalid asset collection");
         var identities = new HashSet<string>(StringComparer.Ordinal);
@@ -27,6 +28,62 @@ public static class Validation
             foreach (var dependency in asset.Dependencies!) { Name(dependency); Require(edges.Add(dependency), "Duplicate dependency"); }
             if (asset.Scene is not null) Scene(asset.Scene);
         }
+    }
+
+    public static void ResourceIndex(EndfieldResourceIndex index)
+    {
+        Name(index.SourceRoot); Name(index.ManifestHash);
+        Require(index.ManifestRevision is not null && index.ManifestRevision.Length <= 4096 && !index.ManifestRevision.Any(char.IsControl), "Invalid manifest revision");
+        Require(index.Files is not null && index.Files.Length <= 1_000_000 && index.Cabs is not null && index.Cabs.Length <= 1_000_000, "Invalid resource index collections");
+        var fileKeys = new HashSet<(string, string)>();
+        foreach (var file in index.Files!)
+        {
+            Require(file is not null && file.Resource is not null, "Null source file");
+            RelativeMetadataPath(file!.BlockIndexPath);
+            var source = file.Resource!;
+            RelativeMetadataPath(source.Name); RelativeMetadataPath(source.Chunk);
+            Require(source.Offset >= 0 && source.Length >= 0 && source.Offset <= long.MaxValue - source.Length, "Invalid logical resource range");
+            Require(source.ChunkDigest is not null && source.PayloadDigest is not null && source.ChunkDigest.Length <= 4096 && source.PayloadDigest.Length <= 4096, "Invalid source digest");
+            Require(fileKeys.Add((file.BlockIndexPath, source.Name)), "Duplicate source file");
+        }
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cab in index.Cabs!)
+        {
+            Require(cab is not null, "Null CAB record"); Name(cab!.Id);
+            Require(ids.Add(cab.Id), "Duplicate CAB identity");
+            Require(cab.Status is "decoded" or "indexed" or "unresolved", "Unsupported CAB status");
+            if (cab.Status == "unresolved") Require(cab.File is null && cab.Entry is null, "Unresolved CAB has a locator");
+            else
+            {
+                Require(cab.File is >= 0 && cab.File < index.Files.Length && cab.Entry is not null, "Invalid CAB file relationship");
+                Name(cab.Entry!.Name);
+                Require(string.Equals(ResourceIndexMetadata.CabLeaf(cab.Entry.Name), cab.Id, StringComparison.OrdinalIgnoreCase), "CAB entry identity mismatch");
+                Require(cab.Entry.Offset >= 0 && cab.Entry.Size >= 0 && cab.Entry.Offset <= long.MaxValue - cab.Entry.Size, "Invalid CAB entry range");
+            }
+            if (cab.Status != "decoded")
+                Require(cab.ContainerPaths is null && cab.ClassIds is null && cab.Dependencies is null, "Uninspected CAB has decoded metadata");
+            else
+            {
+                Require(cab.ContainerPaths is not null && cab.ClassIds is not null && cab.Dependencies is not null, "Decoded CAB lacks metadata");
+                UniqueNames(cab.ContainerPaths!); UniqueNames(cab.Dependencies!, StringComparer.OrdinalIgnoreCase);
+                Require(cab.ClassIds!.Length <= 1_000_000 && cab.ClassIds.Distinct().Count() == cab.ClassIds.Length, "Invalid class ID set");
+            }
+        }
+        foreach (var cab in index.Cabs)
+            foreach (string dependency in cab.Dependencies ?? []) Require(ids.Contains(dependency), "CAB dependency lacks resolved or unresolved record");
+    }
+
+    private static void UniqueNames(string[] values, StringComparer? comparer = null)
+    {
+        Require(values.Length <= 1_000_000, "Resource metadata limit exceeded");
+        var unique = new HashSet<string>(comparer ?? StringComparer.Ordinal);
+        foreach (var value in values) { Name(value); Require(unique.Add(value), "Duplicate resource metadata"); }
+    }
+
+    private static void RelativeMetadataPath(string value)
+    {
+        Name(value);
+        Require(!value.StartsWith('/') && !value.Contains('\\') && !value.Contains(':') && value.Split('/').All(x => x.Length > 0 && x is not "." and not ".."), "Source path must be a relative metadata path");
     }
 
     public static void Scene(SceneDocument scene)

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace Sora.Core;
 
-public sealed record DatabaseDocument(string GameVersion, AssetRecord[] Assets);
+public sealed record DatabaseDocument(string GameVersion, AssetRecord[] Assets, EndfieldResourceIndex? ResourceIndex = null);
 public sealed record AssetRecord(string Id, string Label, string Detail, string Kind,
     string[] Dependencies, SceneDocument? Scene = null);
 public sealed record SceneDocument(string Name, BoneRecord[] Bones, MeshRecord[] Meshes,

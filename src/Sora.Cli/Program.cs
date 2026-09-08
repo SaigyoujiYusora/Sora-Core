@@ -31,7 +31,8 @@ try
     }
     else if (args.Length == 4 && args[0] == "import-character")
     {
-        var database = NativeCharacterImport.Import(new GameResources(args[1]), args[2]);
+        var resources = new GameResources(args[1]);
+        var database = NativeCharacterImport.Import(resources, args[2]) with { ResourceIndex = resources.SnapshotResourceIndex() };
         DatabaseFile.WriteAtomic(args[3], database);
         var scene = database.Assets[0].Scene!;
         Console.WriteLine(JsonSerializer.Serialize(new { ok = true, meshes = scene.Meshes.Length, bones = scene.Bones.Length, materials = scene.Materials.Length, textures = scene.Textures?.Length ?? 0 }, WireJson.Options));
@@ -113,7 +114,7 @@ static string Handle(string line)
         var parameters = root.GetProperty("params");
         Validation.Require(parameters.ValueKind == JsonValueKind.Object, "Params must be an object");
         object result;
-        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene" }, nativeGameExtraction = true, nativeExtraction = new { entryPoint = "CLI import-character", geometry = true, materials = "native descriptors and textures", humanoidAnimation = false, authoredFaceControls = false, maps = false, verifiedCharacters = new[] { "azrila" } } };
+        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene" }, nativeGameExtraction = true, nativeExtraction = new { entryPoint = "CLI import-character", geometry = true, materials = "native descriptors and textures", humanoidAnimation = false, authoredFaceControls = false, maps = false, verifiedCharacters = new[] { "azrila" } } };
         else
         {
             Validation.Require(method is "inspect" or "search" or "closure" or "scene", "Unsupported method");
