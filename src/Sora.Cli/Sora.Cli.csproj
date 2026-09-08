@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>Sora-Core</AssemblyName><UseAppHost>false</UseAppHost></PropertyGroup>
+  <PropertyGroup><OutputType>Exe</OutputType><AssemblyName>Sora-Core</AssemblyName><UseAppHost>true</UseAppHost><SelfContained>false</SelfContained></PropertyGroup>
   <ItemGroup><ProjectReference Include="../Sora.Core/Sora.Core.csproj" /></ItemGroup>
     <Target Name="RequireNativeDependenciesForPublish" BeforeTargets="PrepareForPublish">
         <Error Condition="!Exists('$(MSBuildThisFileDirectory)../../native/win-x64/Sora.Acl.dll')" Text="Build Sora.Acl.dll from source and place it in native/win-x64 before publishing. See docs/BUILD.md."/>
