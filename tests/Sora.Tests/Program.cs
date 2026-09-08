@@ -4,6 +4,17 @@ using Sora.Core;
 
 try
 {
+if(args.Length==1 && args[0]=="acl-worker") {
+    string? mode=Environment.GetEnvironmentVariable("SORA_ACL_TEST_MODE");
+    if(mode=="timeout") {
+        Console.In.ReadToEnd();
+        if(Environment.GetEnvironmentVariable("SORA_ACL_TEST_PID_PATH") is {} pidPath) File.WriteAllText(pidPath,Environment.ProcessId.ToString());
+        Thread.Sleep(30000);
+    }
+    else if(mode=="oversized-error") { Console.Error.Write(new string('x',70000)); }
+    else Console.Write("{}");
+    return;
+}
 int passed = 0;
 void Test(string name, Action action) { action(); Console.WriteLine("PASS " + name); passed++; }
 void Reject(Action action)
@@ -91,6 +102,7 @@ TextureTests.Run(Test, Reject);
 NprTests.Run(Test, Reject);
 ResourceIndexTests.Run(Test, Reject);
 FaceMorphTests.Run(Test, Reject);
+AclTests.Run(Test, Reject);
 if (args.Length == 1)
 {
     Directory.CreateDirectory(args[0]);

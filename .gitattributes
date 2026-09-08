@@ -1,0 +1,5 @@
+native/win-x64/** binary
+native-source/acl/** -text -whitespace
+native-source/acl/clang-portability.patch binary
+licenses/ACL-NOTICES.txt -text -whitespace
+docs/ACL-VALIDATION.json -text -whitespace

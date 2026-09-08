@@ -6,7 +6,11 @@ Console.InputEncoding = new UTF8Encoding(false, true);
 Console.OutputEncoding = new UTF8Encoding(false);
 try
 {
-    if (args.Length == 1 && args[0] == "rpc")
+    if (args.Length == 1 && args[0] == "acl-worker")
+    {
+        AclCodec.RunWorker(Console.OpenStandardInput(), Console.Out);
+    }
+    else if (args.Length == 1 && args[0] == "rpc")
     {
         using var input = new BufferedStream(Console.OpenStandardInput(), 16384);
         while (true)

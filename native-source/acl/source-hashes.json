@@ -1,0 +1,818 @@
+{
+  "source": "https://github.com/Escartem/AnimeStudio",
+  "commit": "1ccfbc16bf7fe625e8295bac8074ac3b1b9a065b",
+  "files": [
+    {
+      "path": "acl/compression/compress.h",
+      "sha256": "7beb4de0085d2891ef9ecf3e5c178dabb788fb00dab15e3513d2d2b02605cdf5"
+    },
+    {
+      "path": "acl/compression/compression_level.h",
+      "sha256": "86396268ae98ce468b697a84e263c493c2e771b9c37e3c75a3149bfda86571f7"
+    },
+    {
+      "path": "acl/compression/compression_settings.h",
+      "sha256": "42eb8a8e4e89e6988b7fc91a4fdc9fb1f9f86b0ddbb05384dd3b08396ca9c35c"
+    },
+    {
+      "path": "acl/compression/convert.h",
+      "sha256": "7a1b66511bb9c166f9612d32b261351c5a960d9c4f51326bff92cee6c3b59faf"
+    },
+    {
+      "path": "acl/compression/fwd.h",
+      "sha256": "6f802c3eed540afd19af5a630ba4db898a4a05757d42c1ed740b8131a352a5b2"
+    },
+    {
+      "path": "acl/compression/impl/animated_track_utils.h",
+      "sha256": "a7d36fd55cb6492b002e62d5b8f5c0de9ced60cf3c438661ad5454141fdd7191"
+    },
+    {
+      "path": "acl/compression/impl/clip_context.h",
+      "sha256": "996a22dd161c39732f10a84657df5c608c4581633938de4cd3026663006b2c96"
+    },
+    {
+      "path": "acl/compression/impl/clip_context.impl.h",
+      "sha256": "09e7e47d056858ece530263497333aa125866a6ca7ee7b9b1f70c3431fffa964"
+    },
+    {
+      "path": "acl/compression/impl/compact.scalar.h",
+      "sha256": "ab42c9ff3c44d282875f95d707dd37c2f84019b35d63f18cf54b5686f5d01b36"
+    },
+    {
+      "path": "acl/compression/impl/compact.transform.h",
+      "sha256": "39acd69dca5682c0ab45ca697987bd2cf54f0760c6f87902f609041cde1c6c24"
+    },
+    {
+      "path": "acl/compression/impl/compress.database.impl.h",
+      "sha256": "85c12e1f3a7346c2358c7e14c63ef5457d287f565f52749540b6e70f9461b6f7"
+    },
+    {
+      "path": "acl/compression/impl/compress.impl.h",
+      "sha256": "0a5d8fbea3ec4dd884055890268bc2bb494731721aa7a8ea4ebc88b622178f53"
+    },
+    {
+      "path": "acl/compression/impl/compress.scalar.impl.h",
+      "sha256": "20cc5c1c3701f3536c83a8999efe2093b30fe9afdb4acfd124b3a7b943214fb6"
+    },
+    {
+      "path": "acl/compression/impl/compress.transform.impl.h",
+      "sha256": "ef149e93a7c8829c49d1638025490885fffb8dcc431a789856026692bc11be20"
+    },
+    {
+      "path": "acl/compression/impl/compression_level.impl.h",
+      "sha256": "4f55e514da8e9fc5259b2e7cb7912e288326e98770e091f08322364cf8b2bfb7"
+    },
+    {
+      "path": "acl/compression/impl/compression_settings.impl.h",
+      "sha256": "118254ae2f7a5b58ee341187cefbcdea908f12eaf029c8e46c6162bf9ef6de2f"
+    },
+    {
+      "path": "acl/compression/impl/compression_stats.h",
+      "sha256": "b9a819adc61b26a17353f40d38ab280caeb034a4a6f75c2192f503ac63091025"
+    },
+    {
+      "path": "acl/compression/impl/convert.impl.h",
+      "sha256": "99d13232cfb870996124fb579f6e22dc2ed9b24b373f3cce92096558a6fc5572"
+    },
+    {
+      "path": "acl/compression/impl/convert_rotation.transform.h",
+      "sha256": "2fdcf3d62cfdfbedcc796d67a4bb031d6080ef7c47e4fe2c88c1e2d8ca8626e7"
+    },
+    {
+      "path": "acl/compression/impl/keyframe_stripping.h",
+      "sha256": "77bd39dcd1711519488ef7594e92f7c798475d0f72a225da06d4d6e67a3cbcd8"
+    },
+    {
+      "path": "acl/compression/impl/normalize.scalar.h",
+      "sha256": "3633289b28b809e517fc95420bbabff01c4afcd21188e46dbb22d47554925f98"
+    },
+    {
+      "path": "acl/compression/impl/normalize.transform.h",
+      "sha256": "518994ce6ee86eeea33dbf406d434e6f4cb38f8af6c43bf859d2f0145f3b23da"
+    },
+    {
+      "path": "acl/compression/impl/optimize_looping.scalar.h",
+      "sha256": "8bc48b8a5995a69b1a3b15254e314de7fb92dce674879cf1a33a30a27941ea6b"
+    },
+    {
+      "path": "acl/compression/impl/optimize_looping.transform.h",
+      "sha256": "177da48a3fc7188b7937066a8c134f992826e6af891bb829dd282bc2f721b288"
+    },
+    {
+      "path": "acl/compression/impl/pre_process.common.h",
+      "sha256": "224ac628bbf163264beb9e4b2c7fd3b097ed00d7d859e010899e18b899eff137"
+    },
+    {
+      "path": "acl/compression/impl/pre_process.impl.h",
+      "sha256": "2750c8851d11a548badf950e6f28a25f5970cbe327e88468bf539fb8fc9d9993"
+    },
+    {
+      "path": "acl/compression/impl/pre_process.scalar.h",
+      "sha256": "39d4d71577b699c4e713c39a1296d5554433dac495f64b8dc8a481e0475903e3"
+    },
+    {
+      "path": "acl/compression/impl/pre_process.transform.h",
+      "sha256": "a5bc9ffafa6a2edc26a8a0bc4df8bdda2a376ac880d862495b80104acba537e3"
+    },
+    {
+      "path": "acl/compression/impl/quantize.scalar.h",
+      "sha256": "6f4d819c16b9362cf0079da094a16605fb1d9f12893ac6e8422db041a22b70c5"
+    },
+    {
+      "path": "acl/compression/impl/quantize.transform.h",
+      "sha256": "8a4e9173fc09a4646d7ab2962568f2c2c05fc7ec2401258250e5a2e8b4be3394"
+    },
+    {
+      "path": "acl/compression/impl/rigid_shell_utils.h",
+      "sha256": "d8eb7e893bae564da986e9dccecc0657a5294a3192111fe09f06c61ae85de097"
+    },
+    {
+      "path": "acl/compression/impl/sample_streams.h",
+      "sha256": "252804e5b1f13a0385514dae10f16e69ca16961ed612144d7523ae279396b534"
+    },
+    {
+      "path": "acl/compression/impl/segment.transform.h",
+      "sha256": "c2c0df91e2bb561d4025e6a87cbe55bd0dfeef473bf623e856688a138a6e0b8b"
+    },
+    {
+      "path": "acl/compression/impl/segment_context.h",
+      "sha256": "9074741fcb0913cddac1c11ce49d125af2254acc2f3d1490ac2e9c4ddca4e014"
+    },
+    {
+      "path": "acl/compression/impl/track.impl.h",
+      "sha256": "fd18734b69ff1e3cd967559f9d7aeb368a0626fb996c72ff64d348f4c2775e19"
+    },
+    {
+      "path": "acl/compression/impl/track_array.impl.h",
+      "sha256": "c1e006744fc7f730d4c21c8d9f148af872ee6e9a5817b80ea0b0e42baace8bac"
+    },
+    {
+      "path": "acl/compression/impl/track_bit_rate_database.h",
+      "sha256": "6cff8796d39d7d87c0150df04a77e3bf938fb12457ced538ea8721166d13f722"
+    },
+    {
+      "path": "acl/compression/impl/track_error.impl.h",
+      "sha256": "894b9d70cff69aeda498da0fd3b8a9872e4047daf8852cb311afe1e3da35739a"
+    },
+    {
+      "path": "acl/compression/impl/track_list_context.h",
+      "sha256": "f8a31728579bdfa43dc33912452ac847bd95b3b3f1b0b70e4a912f87976eb579"
+    },
+    {
+      "path": "acl/compression/impl/track_range.h",
+      "sha256": "0449f901306b23547e6b4e2f2206f3df738be46258ab0ef79627cbba0fa613f0"
+    },
+    {
+      "path": "acl/compression/impl/track_range_impl.h",
+      "sha256": "4204cea90e009e4922ede7dc4de9ed521843f1b825c2d700e95b88efb075a1d5"
+    },
+    {
+      "path": "acl/compression/impl/track_stream.h",
+      "sha256": "ef4a291be9a9a3e9c8b00aabf5a6dd7db3fd72d385551168d045e715e0ddb43b"
+    },
+    {
+      "path": "acl/compression/impl/transform_bit_rate_permutations.h",
+      "sha256": "5858db555befded69de28fb24ab870438e2ed9867526e643e3765899256ca6c9"
+    },
+    {
+      "path": "acl/compression/impl/transform_clip_adapters.h",
+      "sha256": "e2d9ea229f88e5ecb159e89562084562143a490f1c5d8c73e6e543feb3c2ddf7"
+    },
+    {
+      "path": "acl/compression/impl/write_compression_stats_impl.h",
+      "sha256": "88bc06c214730421133c183e4fea626120b43a9d7ce71fb5da4bcf61ae6cf499"
+    },
+    {
+      "path": "acl/compression/impl/write_range_data.h",
+      "sha256": "dcdf1eddb9a9866c05bd392da9480a8d6970ecb364d92321840318597422e1a9"
+    },
+    {
+      "path": "acl/compression/impl/write_segment_data.h",
+      "sha256": "3265622332d11923acd3d4a1cfe5e7c5d85ec36f66bc449332e69613f7f97c75"
+    },
+    {
+      "path": "acl/compression/impl/write_stats.h",
+      "sha256": "ec279903e193ca0acec9c22f6a9e9cd078e0c0aa0ce63379e8114dac90fc08e7"
+    },
+    {
+      "path": "acl/compression/impl/write_stream_data.h",
+      "sha256": "30d7ab4a2acd5c7b8ba88a314e06536b83385ae015548922cc5f2d5a7aa97f5c"
+    },
+    {
+      "path": "acl/compression/impl/write_sub_track_types.h",
+      "sha256": "39ca145b0322e78fddda80c839119271ad474a7ae693ca1e92ea1ecbc2e8f9b5"
+    },
+    {
+      "path": "acl/compression/impl/write_track_data_impl.h",
+      "sha256": "d811826c0544ba43a32675efdb8dc3147dfe6093d6625ba543722def43435ae3"
+    },
+    {
+      "path": "acl/compression/impl/write_track_metadata.h",
+      "sha256": "495b14fb53fa580bea20ee387cf58aff09f70424163fa20425b6b7c6f37112f1"
+    },
+    {
+      "path": "acl/compression/output_stats.h",
+      "sha256": "3a6a3556ff0048808c0676149aa41cb307a28d3991221cc63397bf948c028a05"
+    },
+    {
+      "path": "acl/compression/pre_process.h",
+      "sha256": "8a228aa3d4854caebf6d48a489d9ef42519276f9061c58532e3e091dd3271e65"
+    },
+    {
+      "path": "acl/compression/track.h",
+      "sha256": "a2c43e220f9ac1352f95a04a0c8db397bd7015033a9c4842aece84bf0a382a8c"
+    },
+    {
+      "path": "acl/compression/track_array.h",
+      "sha256": "542cff505c98e9fb7e04292cc7d30ac327d63cab59fdd6ae10cc15a0c8dc01a8"
+    },
+    {
+      "path": "acl/compression/track_error.h",
+      "sha256": "4936327076e68793f2e3c21590d7748be3db8c8e2299dba045f293a538343c07"
+    },
+    {
+      "path": "acl/compression/transform_error_metrics.h",
+      "sha256": "081ec3fa12e532d6df04712205fd7747a1e57be2e0b112e87e8100662ba4cc5e"
+    },
+    {
+      "path": "acl/compression/transform_pose_utils.h",
+      "sha256": "ba367687b000dea3d979fb496da9a314d44f5f0cf92ee74ca3191c6d1f21b931"
+    },
+    {
+      "path": "acl/core/additive_utils.h",
+      "sha256": "6d3924a429a18909f83b36f93c2803d6b364ef44a185d6c0787d1a48d7b147e4"
+    },
+    {
+      "path": "acl/core/algorithm_types.h",
+      "sha256": "3a9910803f44cd7df5a1c094730ce20ad2933d6ced50d826942e99fea8d9620b"
+    },
+    {
+      "path": "acl/core/ansi_allocator.h",
+      "sha256": "d9aa3cb5a09f5b0260f1cf4465af44979dae36697d6daede2a1b29fe95f2df37"
+    },
+    {
+      "path": "acl/core/bit_manip_utils.h",
+      "sha256": "23de078c9348153e8c5c871c6b1d04b76f21ea6e11fb22a47f48ab11a3ad4812"
+    },
+    {
+      "path": "acl/core/bitset.h",
+      "sha256": "127c3871fb8d39143d87e9f4af47f59ceff62c076e3266c8720216f477c05611"
+    },
+    {
+      "path": "acl/core/buffer_tag.h",
+      "sha256": "b6c56dccc9bc116c0e7802b9d3b27e2a434c1dee3a87d0a7d5e434cd3db6b46c"
+    },
+    {
+      "path": "acl/core/compressed_database.h",
+      "sha256": "52c4185c1d3a695a02b130565ec44649d8b97ecd2466f1dbbc5534774b606655"
+    },
+    {
+      "path": "acl/core/compressed_tracks.h",
+      "sha256": "0f2dc60f35d3f6bf5fc83e8899da571e4df83d6f43ba27d6c44fb4d030da2ca6"
+    },
+    {
+      "path": "acl/core/compressed_tracks_version.h",
+      "sha256": "6cfdded57c00ca59b7c2d9ed3c03de1e4ec9e629700fb78e002b2ec79981c21d"
+    },
+    {
+      "path": "acl/core/enum_utils.h",
+      "sha256": "7f774df1687a9c6225bc582ff9f071bd07d4d7acc680c92bc7a157b6d66114b9"
+    },
+    {
+      "path": "acl/core/error.h",
+      "sha256": "d8262ff13741479912394e2bc43fd8d3c5b15763e8b6aa9c3b2b5f0a3f5a19c7"
+    },
+    {
+      "path": "acl/core/error_result.h",
+      "sha256": "71c7de9f9b9079873e0737fa0cd698eb0849857b5cfe088c4769c03c1dd0ade7"
+    },
+    {
+      "path": "acl/core/floating_point_exceptions.h",
+      "sha256": "3bc56ca548a300274d5ccd90095416effdb477be1d19b0e95ec8fa11413f60cc"
+    },
+    {
+      "path": "acl/core/fwd.h",
+      "sha256": "0ec53db52f640071c9a5a89fed6a8dc88e38348111d315d7c37b9c0811f46a87"
+    },
+    {
+      "path": "acl/core/hash.h",
+      "sha256": "981274fca607fdb86628a33c01fd7aacb7f3bf909f77456fafdcf53a3c8f2dc3"
+    },
+    {
+      "path": "acl/core/iallocator.h",
+      "sha256": "fcee04f9ec8f583efd223e46a6be148481f1970fe2b56a5d3c7d423d3251d5fa"
+    },
+    {
+      "path": "acl/core/impl/atomic.impl.h",
+      "sha256": "7efe16e66a03599a337c7852825f7f824e70b4e9e2e2ff0fb27b81c20493dc80"
+    },
+    {
+      "path": "acl/core/impl/bit_cast.impl.h",
+      "sha256": "007602df4d30735553401b5371874269938a51b99bba8f24c92aa1335962a800"
+    },
+    {
+      "path": "acl/core/impl/compiler_utils.h",
+      "sha256": "b7eb988e84efa1b76e76044dce955df2bb4c230c0183c0d07027d45dd47374ed"
+    },
+    {
+      "path": "acl/core/impl/compressed_database.impl.h",
+      "sha256": "be86d8ea9be38fb904ccd41921039b78cccc9e84add09795c15c4c1a81c12a13"
+    },
+    {
+      "path": "acl/core/impl/compressed_headers.h",
+      "sha256": "cca3d42241e38fb7061c095b2a6c04c647d58b4180a65b1fb98a3d8f0e958003"
+    },
+    {
+      "path": "acl/core/impl/compressed_tracks.impl.h",
+      "sha256": "0efbb89644bde2404f1ef2597fa76f29eb8fef66b6825b8f28f693e3cee7e06a"
+    },
+    {
+      "path": "acl/core/impl/debug_track_writer.h",
+      "sha256": "fa8bc49f72ea4f9cfdd9adda6d81a5652e5165f4759782d9aefb3ccfe62f2a55"
+    },
+    {
+      "path": "acl/core/impl/interpolation_utils.impl.h",
+      "sha256": "0ea8f5c3d45992473aa2b4ec0e0eb8d3ae772a32eeb1fc5e23cfab06b8eb415f"
+    },
+    {
+      "path": "acl/core/impl/time_utils.impl.h",
+      "sha256": "afbc473fe8730f260f14d69d02e79499468feaff3ea6217dc716c16976b35c88"
+    },
+    {
+      "path": "acl/core/impl/track_desc.impl.h",
+      "sha256": "ff9715d340575844c2326ddb5f1b8299fa2ffe36493bc6df8086ad623accfe68"
+    },
+    {
+      "path": "acl/core/impl/track_formats.impl.h",
+      "sha256": "397fb89ade7389eb9addd7227509e91bd18b2900c5efdec5d68c59b4b12711ba"
+    },
+    {
+      "path": "acl/core/impl/variable_bit_rates.h",
+      "sha256": "450084dd6ffc1f15e012e09986c135de6bdd0340bc7185396477b999103b908f"
+    },
+    {
+      "path": "acl/core/interpolation_utils.h",
+      "sha256": "01627ce09858a10bdeb4cfd595a50e609f6517ccc6e395738eec3c8c0e0f2f20"
+    },
+    {
+      "path": "acl/core/iterator.h",
+      "sha256": "75ae4209e70322170ec5f849836ff0601b46818d35040ffd8e3bcb3c02a8c1a7"
+    },
+    {
+      "path": "acl/core/memory_utils.h",
+      "sha256": "9d40559c194e5db3ac7d567bb6b845a2c8ef73ec8028c047511406d785a644f7"
+    },
+    {
+      "path": "acl/core/ptr_offset.h",
+      "sha256": "be79e8b4f66a443f83d383bfd4187f181c03f1ea1d5b44b2541a8c89bf260242"
+    },
+    {
+      "path": "acl/core/quality_tiers.h",
+      "sha256": "4fd5893f6641e0e29edfb533821c734f5ec1e2587f11f2abefda1edddead6418"
+    },
+    {
+      "path": "acl/core/range_reduction_types.h",
+      "sha256": "9f8c9df1fa88ac877354f86ad76ee7583daf4982abf5f50210305b64a9f44919"
+    },
+    {
+      "path": "acl/core/sample_looping_policy.h",
+      "sha256": "726348d8305ff2b45fc727e4fe001a351eedffdc64b552ba343603aaefbedfda"
+    },
+    {
+      "path": "acl/core/sample_rounding_policy.h",
+      "sha256": "7b7dedb8b593a10ba3bc49dcadb645f5c3dda00b17ae29d5a832924a1ec817cc"
+    },
+    {
+      "path": "acl/core/scope_profiler.h",
+      "sha256": "13892a19bd22980b65a29300264db4b6e1490fa260956cf3eeb2564a1736e61f"
+    },
+    {
+      "path": "acl/core/string.h",
+      "sha256": "e9f6f177809933f1f11f286aead5977506a142adadc9f2d2d3152c07084911f8"
+    },
+    {
+      "path": "acl/core/time_utils.h",
+      "sha256": "5d4dfebbc736af26c7edd8b2b6fcbd3a361aa4d65359d13214da8501dd1080ae"
+    },
+    {
+      "path": "acl/core/track_desc.h",
+      "sha256": "fe39559dce3fa937e8a84989504d17ec7f4d9c51ae806f762aa2c944d2daa916"
+    },
+    {
+      "path": "acl/core/track_formats.h",
+      "sha256": "2a9ba8c68bdcc91f85e6343c96ea7f6d6d520235f809f44757e420a3657cb2b7"
+    },
+    {
+      "path": "acl/core/track_traits.h",
+      "sha256": "80fd0b643f0b8f55bf888e53e6b05a8d4b7e59c1a094a1d59f71637c9490a948"
+    },
+    {
+      "path": "acl/core/track_types.h",
+      "sha256": "63b1653de4d0fa42fd50c60b3ff1fb1da5743ae057716ac4561d96466d02b12e"
+    },
+    {
+      "path": "acl/core/track_writer.h",
+      "sha256": "3167d7d42f9f456d9d2e3815b06dcf5fdf8403e401739c6d40f99c5428a0dd81"
+    },
+    {
+      "path": "acl/core/unique_ptr.h",
+      "sha256": "bb27ad6490199402fd07e337d695271b84981f01cf2855e7395061be9591a9d5"
+    },
+    {
+      "path": "acl/core/utils.h",
+      "sha256": "c02bc066badfa2f771b2554468a23f2ad9f324d144c2d857f7c964f1da053699"
+    },
+    {
+      "path": "acl/core/variable_bit_rates.h",
+      "sha256": "cccede99e3c2f5c96d21a7e49fa823183c55fe795200c4da35d9941aca0abee4"
+    },
+    {
+      "path": "acl/decompression/database/database.h",
+      "sha256": "0a5f10077d5ee2c42013bb528858fb13518a9bddd3e986d6fad9c0aa0131b945"
+    },
+    {
+      "path": "acl/decompression/database/database_settings.h",
+      "sha256": "e6eac996d52456390751810168598bf940ad4bff44b6a05bab7805c810fd6844"
+    },
+    {
+      "path": "acl/decompression/database/database_streamer.h",
+      "sha256": "51d29a2374959c1cce2a1a1ecb27e01f0e5ebe7a94d2977c704fe0771b0e24a4"
+    },
+    {
+      "path": "acl/decompression/database/impl/database.impl.h",
+      "sha256": "ed579bb2026285a6042ce838da5697e4c4ffa7bcc3e9c58a5277c0f71abace00"
+    },
+    {
+      "path": "acl/decompression/database/impl/database_context.h",
+      "sha256": "2af2dbfe92072bf56499c7962e1b3ea4d7836985be70a205f92f358bb9a6859d"
+    },
+    {
+      "path": "acl/decompression/database/impl/database_streamer.impl.h",
+      "sha256": "70f2feb31a0f9f4cc47d9480971684603a1aa3db19a5d464ee441828e32a170b"
+    },
+    {
+      "path": "acl/decompression/database/impl/debug_database_streamer.h",
+      "sha256": "1024f2d76e375330510d4e575e02da9c719d499bf97822defab03e7d9597f36d"
+    },
+    {
+      "path": "acl/decompression/database/null_database_streamer.h",
+      "sha256": "1dedfaec16b967637a62c1e02c1e07243bdd8d63d0334908344ca0cfa8fd7e7c"
+    },
+    {
+      "path": "acl/decompression/decompress.h",
+      "sha256": "8035af211a4def4531222b3628804dea1ab61faa974c23455d0bc8d73bf93357"
+    },
+    {
+      "path": "acl/decompression/decompression_settings.h",
+      "sha256": "852f2559a9d55056905c0b2c20d203fa1e74d5b15c803ecec03a3833eede01c2"
+    },
+    {
+      "path": "acl/decompression/fwd.h",
+      "sha256": "25b91685bff333f544612087dcfd983cf3949947ae6d6194eec76910a826e85c"
+    },
+    {
+      "path": "acl/decompression/impl/animated_track_cache.transform.h",
+      "sha256": "773f1bbd7929d1dc6d3b72da5792a426c0aa6e730e9dd40d0814cdbeea6738f4"
+    },
+    {
+      "path": "acl/decompression/impl/constant_track_cache.transform.h",
+      "sha256": "8fe7289f0fd7970b6cadccc84e18e43605fa1daff1d2d28820e513e519fe6c31"
+    },
+    {
+      "path": "acl/decompression/impl/decompress.impl.h",
+      "sha256": "81aa512a1ca2e66fc856e75714462009723cd5e8f1b58a4355d85e3205ae51ef"
+    },
+    {
+      "path": "acl/decompression/impl/decompression.scalar.h",
+      "sha256": "556d4c8cc0abeee8b87b2f3e83bf4ed7c3a6e800f40381b90a64d0d4cc59f3f1"
+    },
+    {
+      "path": "acl/decompression/impl/decompression.transform.h",
+      "sha256": "cb7e38cfcbc5629e174ed26d24740e9252fe64c5d58badfa930d0a9bb7819817"
+    },
+    {
+      "path": "acl/decompression/impl/decompression.universal.h",
+      "sha256": "de98a75b1371c8c4e00c07ae70b83168ab82f67d3e2dcf8f880c8eab3f19eb58"
+    },
+    {
+      "path": "acl/decompression/impl/decompression_context.transform.h",
+      "sha256": "3a99ea9e17ba309a01171efc54841f6093854f195bf751ae5213a4164a79f1e9"
+    },
+    {
+      "path": "acl/decompression/impl/decompression_context_selector.h",
+      "sha256": "e7fca27ed5c72e589cabe6614b58313e281d3a5d8fe01df20d0c8141ba380a1c"
+    },
+    {
+      "path": "acl/decompression/impl/decompression_version_selector.h",
+      "sha256": "6729403827b5bafe680d16a22793774b6edcdb58a4d931c5fc89ce3edcb9790f"
+    },
+    {
+      "path": "acl/decompression/impl/track_cache.h",
+      "sha256": "d5924e946fe5947bc7d39516611eaf9613905b599b9b03f6286a7cee1e6524f7"
+    },
+    {
+      "path": "acl/fwd.h",
+      "sha256": "06a38dcb0eb0232d9b684d8ae82273b326795c88c1ae4164ee94e4b64a6a7306"
+    },
+    {
+      "path": "acl/io/clip_reader.h",
+      "sha256": "30d1fd0bb3fbf513aa849f907b2ccc37daa1fa74b43a23527787bd783c881ef5"
+    },
+    {
+      "path": "acl/io/clip_reader_error.h",
+      "sha256": "51713b276d440da71d1d416912fa42ea33fa8379e8bfb5c3ca5289e7e30df5e0"
+    },
+    {
+      "path": "acl/io/clip_writer.h",
+      "sha256": "6864dbbb6a4878a68bc21601cbce9477c07307cf827e326e083e94e7619dfe52"
+    },
+    {
+      "path": "acl/io/fwd.h",
+      "sha256": "616aacfcfc1695797224bd269fb8a7f23dea5f47c7b904a92055d94260a04d54"
+    },
+    {
+      "path": "acl/math/quat_packing.h",
+      "sha256": "31f80784b2aba1ec61aea4a1a20f3115d2447ee29b2fb4289818b4b464067bb2"
+    },
+    {
+      "path": "acl/math/quatf.h",
+      "sha256": "94c1e3177b17b3a866d16cc65e03dcfb5936dc0e1afb6a9a2779af97852fb121"
+    },
+    {
+      "path": "acl/math/qvvf.h",
+      "sha256": "d57a0b3837f748583599e9c1c23a21f337ef26de6b6f9de03c88f350ed8e9dc1"
+    },
+    {
+      "path": "acl/math/scalar_packing.h",
+      "sha256": "9b406e70e66cdea236b51813fe39ffeee86bc2b76663dd4530c41ab9d094342a"
+    },
+    {
+      "path": "acl/math/vector4_packing.h",
+      "sha256": "7fe1e920cff472290d23340001f6bb6a2d295b9dd0b51a0de86398c478318757"
+    },
+    {
+      "path": "acl/math/vector4f.h",
+      "sha256": "250b5c72cee6fe52955bd6acf7f941525a7b876c94b39c5816bb4a3f4149ce27"
+    },
+    {
+      "path": "acl/version.h",
+      "sha256": "9002ef5a447111c3a4985149006d191c038a66bbfbade009cbcd47ac72dc8d81"
+    },
+    {
+      "path": "dllmain.cpp",
+      "sha256": "2fa4edee5d952230c069d7d666fa4babd59e072323ca0134693fc86276af6828"
+    },
+    {
+      "path": "dllmain.h",
+      "sha256": "6759d73e1d9fa7f7346916e7cab647120fc602eacf0178e588226e37371520dd"
+    },
+    {
+      "path": "rtm/camera_utilsd.h",
+      "sha256": "221d3cf005b5247133ada02189aabe090da78ce5539e74cdbbd7a6c4be88f8dd"
+    },
+    {
+      "path": "rtm/camera_utilsf.h",
+      "sha256": "6e4b97f8cb9f5529d8f234d57a75f7a8e9502640bb76653389bb23d90ef09ef1"
+    },
+    {
+      "path": "rtm/constants.h",
+      "sha256": "66e3be089478999dc204fcce84a002ac889c036bf85a04c8dd5dc11faa6af7e9"
+    },
+    {
+      "path": "rtm/fwd.h",
+      "sha256": "d9ea93bc010f562a70ac5aa1a5cb866fd7130e01c60ad970de11ad9e6bbd24f1"
+    },
+    {
+      "path": "rtm/impl/bit_cast.impl.h",
+      "sha256": "e86252a5d64d0986d480509a6c368f3b6811eeb87698eade96c8b42dae568394"
+    },
+    {
+      "path": "rtm/impl/cmath.impl.h",
+      "sha256": "9215e318d6b473556a789f75a03515befa949662bc5c4907050bb645f840efd8"
+    },
+    {
+      "path": "rtm/impl/compiler_utils.h",
+      "sha256": "3a8774be83e729a656055b6994032e5cd97497f9cdbd21adfbe06f7df6392fab"
+    },
+    {
+      "path": "rtm/impl/detect_arch.h",
+      "sha256": "61217d907a872e31fbe21e5ee67290c37bbfc4ba09a7680fbd60c691bcf5485f"
+    },
+    {
+      "path": "rtm/impl/detect_compiler.h",
+      "sha256": "4686cc7692b712ebe99abff21e14585baa01d836e02734047133b250c9a56cfc"
+    },
+    {
+      "path": "rtm/impl/detect_cpp_version.h",
+      "sha256": "8373f77e79ae4eb7111d2e8b57d2a024c071f268401ec087ee3bda36fd1f0b93"
+    },
+    {
+      "path": "rtm/impl/detect_features.h",
+      "sha256": "e803aa57a0a06be78e5137df06a2fe56c8451bc7300d25955348138855ae0801"
+    },
+    {
+      "path": "rtm/impl/error.h",
+      "sha256": "5b5d0d2819531afcaff43091862342b816ee82a72c369df289f33c235ef9cce3"
+    },
+    {
+      "path": "rtm/impl/macros.mask4.impl.h",
+      "sha256": "1d88a3f950df5c3030615288b5512de47a92831297847ae28b595c5238a97a6c"
+    },
+    {
+      "path": "rtm/impl/macros.matrix.impl.h",
+      "sha256": "44d79e730fcf519a1127856e94aa3d871a6c462898b3990e87dd0abe493ae00d"
+    },
+    {
+      "path": "rtm/impl/macros.vector4.impl.h",
+      "sha256": "205e7fbecb83f7e47f7caec1f185d5f7f632a7e6d186c97b8fc96eab17566a49"
+    },
+    {
+      "path": "rtm/impl/mask_common.h",
+      "sha256": "ce667b80f8ec335dca8972ab425e45b076dd558eb3af97b89a204681174d4f35"
+    },
+    {
+      "path": "rtm/impl/matrix_affine_common.h",
+      "sha256": "28abdf10d95c0c42a64f25bf884ebec145dbe929fab073c08beb095da0518828"
+    },
+    {
+      "path": "rtm/impl/matrix_cast.h",
+      "sha256": "8cf5ae408f3fb0ee79fcae0cdc63a25d7047c6c62afb96e4ae8fe8c9ea07fe73"
+    },
+    {
+      "path": "rtm/impl/matrix_common.h",
+      "sha256": "99b17f4489403d7d59255d5e11c3e99682d4c21840c6a2882b58fa0a558b423c"
+    },
+    {
+      "path": "rtm/impl/memory_utils.h",
+      "sha256": "33a55850670c2bb317256681f95e9cf10775c8ef1e5b351d031ed4f4fe0b2a29"
+    },
+    {
+      "path": "rtm/impl/quat_common.h",
+      "sha256": "f38fc07275b058e0ceab50a2c51324ef96cd9cf824cc0dd0002a6d2fee8f5930"
+    },
+    {
+      "path": "rtm/impl/qv_common.h",
+      "sha256": "5c900af0227345c38aaa31fe43b68b6ce19035373630da9407f4a200fab69d4c"
+    },
+    {
+      "path": "rtm/impl/qvs_common.h",
+      "sha256": "e9bb1bdd418c1b7ccf5e339935b43c601c9e220a1f9920381107739858835ad9"
+    },
+    {
+      "path": "rtm/impl/qvv_common.h",
+      "sha256": "fecdcbaaace6622634511511e85ec1eb5b19ae4a08634ff64bd796779a519f63"
+    },
+    {
+      "path": "rtm/impl/scalar_common.h",
+      "sha256": "35564a35e350a12a3241b22b33eaf6ffaa817e26604e037d036adc89f5b95f9e"
+    },
+    {
+      "path": "rtm/impl/type_args.h",
+      "sha256": "c30ed5eb65dcb1359946e219f73b749f7144410edc408ba79c1d824aacae1dae"
+    },
+    {
+      "path": "rtm/impl/type_args.neon.impl.h",
+      "sha256": "4dfa67c32620c971966a872cca183e5974a011d14af0c3dd05f784f199b88687"
+    },
+    {
+      "path": "rtm/impl/type_args.neon64.impl.h",
+      "sha256": "325f3c6d6771b9215fcdf1517c378e8c56140fa5b7152d88e90aae56ba93bc04"
+    },
+    {
+      "path": "rtm/impl/type_args.other.impl.h",
+      "sha256": "fcbbca80e7b917d27a3e355d9774bbdf1d4a9992d60bac0387aaf7eb8d71a092"
+    },
+    {
+      "path": "rtm/impl/type_args.vectorcall.impl.h",
+      "sha256": "1054ac559d09413b4b421f3b1ffd81bf81bf7caab3cb0eea03d882e9260e5e22"
+    },
+    {
+      "path": "rtm/impl/type_args.x64_clang.impl.h",
+      "sha256": "a54d2a841cb7ac58fa1168e9a0c81f624ba68fe9dd8d9fa731e3a9aacdc7dc99"
+    },
+    {
+      "path": "rtm/impl/type_args.x64_gcc.impl.h",
+      "sha256": "58f2b289f6072b882ce5ed0e5455389cb95ba8aceabd5cd96817e232bb8e60ae"
+    },
+    {
+      "path": "rtm/impl/vector_common.h",
+      "sha256": "113b3035fbd5a9423f67f19027c9c5aaaed8a95cba34b363a12d8696e364b931"
+    },
+    {
+      "path": "rtm/macros.h",
+      "sha256": "2742154dd3825d77dc35c4264bc185209f6d455bde56073446bae6ca55b91347"
+    },
+    {
+      "path": "rtm/mask4d.h",
+      "sha256": "372c707dbeae9554ab4fbfc8a3ec11f22dda82acc7cd9981a87f3cb23a299fc3"
+    },
+    {
+      "path": "rtm/mask4f.h",
+      "sha256": "e907f4b875f4cbb578dbb307ee6024f2b435c2f657aaa3918a4b30934710bf03"
+    },
+    {
+      "path": "rtm/mask4i.h",
+      "sha256": "29dcf6c08f59748dd8a7533ad1cb5e89fdfe636ef9aa0920cd031d888c60bb44"
+    },
+    {
+      "path": "rtm/mask4q.h",
+      "sha256": "e80517fbea03c8fdc7cf7999955684cd495d8bf55227c63d1c0ebc1e616bb781"
+    },
+    {
+      "path": "rtm/math.h",
+      "sha256": "c56009c183e8a847ecd9df7861e3470ddb8520098d822ce04883e69927346fea"
+    },
+    {
+      "path": "rtm/matrix3x3d.h",
+      "sha256": "13d116ac2aa8eda2e05b366305a4d79699afdc170e7a4748726cf66f6d89bc4c"
+    },
+    {
+      "path": "rtm/matrix3x3f.h",
+      "sha256": "9dbddd6c7657bb10c920e7e876b7894c2043f635c39cc3de706c13f0b0acef8b"
+    },
+    {
+      "path": "rtm/matrix3x4d.h",
+      "sha256": "07c7bb93fb643f8ee0286bfe962d9da6ce22d46e4eccf8a23c0b0ce0eff92fb7"
+    },
+    {
+      "path": "rtm/matrix3x4f.h",
+      "sha256": "7554b4c1ae90948b68da803b92d352e6d922b0375339a2f72488b206cb212948"
+    },
+    {
+      "path": "rtm/matrix4x4d.h",
+      "sha256": "7770daf1d1a8cd6fc2d86b38b0cd2793f88fbf162f0d64d68f8a88b15bd3ced3"
+    },
+    {
+      "path": "rtm/matrix4x4f.h",
+      "sha256": "23b9ecaf2a16231dce7943b290ec440a1a847afbf422b55ae4544a8faf4214e7"
+    },
+    {
+      "path": "rtm/packing/quatd.h",
+      "sha256": "9b8a8f899445753766ca42cc2589a56a5748df166bbf631b0c3d032afe8e3347"
+    },
+    {
+      "path": "rtm/packing/quatf.h",
+      "sha256": "82141401c54ba767a24bc09525c9b3548a4c64f9baf992eeeafcdb071da0cd18"
+    },
+    {
+      "path": "rtm/quatd.h",
+      "sha256": "dc8caa2c34eefac435554b5f481256f32a0be6c290bc6b403ed064745264caac"
+    },
+    {
+      "path": "rtm/quatf.h",
+      "sha256": "777d84437deb6ec422c8f98cfab6d60b3c42127889f6081daeffa7069d81b364"
+    },
+    {
+      "path": "rtm/qvd.h",
+      "sha256": "57a6f4bb60d2272f7758f9fdfcf2e3d2b4cf319cdd333d09b7344f12f3c8bdab"
+    },
+    {
+      "path": "rtm/qvf.h",
+      "sha256": "1072948a484bb8f3beccc7b7ee3c72506100955b0b4290f840fa54c8620a7ec9"
+    },
+    {
+      "path": "rtm/qvsd.h",
+      "sha256": "fcc9d2437aa24dc25817884a9077a3b2ac97accc7a1624cca8ac1731015cae18"
+    },
+    {
+      "path": "rtm/qvsf.h",
+      "sha256": "3c43110ebadf38845525bbc264664827b4672314751e47104858dd46c5e602aa"
+    },
+    {
+      "path": "rtm/qvvd.h",
+      "sha256": "e2c930c50ad029eb077f1e1a9df25ac45972e9c924f3c597abdf741c53d186cf"
+    },
+    {
+      "path": "rtm/qvvf.h",
+      "sha256": "f3c4472994f09b232ecb410fcbb4ad9a0ca4047571e75cf668936a265674b214"
+    },
+    {
+      "path": "rtm/scalard.h",
+      "sha256": "6acddcc35587df322684095aa95c8450b15233e40bf59949a093e9efedaa575b"
+    },
+    {
+      "path": "rtm/scalarf.h",
+      "sha256": "55c65d5f04d27f4906f156336176aed6400f278ce7aa14f7c1354a8b0f051ffd"
+    },
+    {
+      "path": "rtm/type_traits.h",
+      "sha256": "f592f7820224ba3857f3de0860425566e653c5d14a75b724b87e8280f4073a7f"
+    },
+    {
+      "path": "rtm/types.h",
+      "sha256": "f39a11cedf91cdf4c12349bb4db4dc244c3a4ccaf1247001f5fed43991e15949"
+    },
+    {
+      "path": "rtm/vector4d.h",
+      "sha256": "5cd829d5935d13133b208a6f33c70feb5c9524b748182d035e2af49369c5ef48"
+    },
+    {
+      "path": "rtm/vector4f.h",
+      "sha256": "5d2b7a2e80ea0bab6dc16d9e386e166a6e633b746872676c1adfa3bca6b15947"
+    },
+    {
+      "path": "rtm/version.h",
+      "sha256": "5ae634dd82622b6fcd87d2b6b53749d897ef2d2dbd2b2f02cf8f3fbdc6b07641"
+    }
+  ]
+}
