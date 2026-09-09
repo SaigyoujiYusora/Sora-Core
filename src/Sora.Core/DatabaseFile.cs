@@ -38,9 +38,19 @@ public static class DatabaseFile
         Validation.Require(payload.Length <= MaxPayloadBytes, "Document exceeds payload limit");
         using var json = WireJson.Parse(payload);
         Validation.Require(version != 1 || json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("resourceIndex", out _), "Resource index requires database version 2");
+        Validation.Require(version != 1 || !HasNativeClipMetadata(json.RootElement), "Native clip metadata requires database version 2");
         var database = json.Deserialize<DatabaseDocument>(WireJson.Options) ?? throw new InvalidDataException("Null database");
         Validation.Database(database);
         return database;
+    }
+
+    private static bool HasNativeClipMetadata(JsonElement root)
+    {
+        if(root.ValueKind!=JsonValueKind.Object||!root.TryGetProperty("assets",out var assets)||assets.ValueKind!=JsonValueKind.Array)return false;
+        foreach(var asset in assets.EnumerateArray())
+            if(asset.ValueKind==JsonValueKind.Object&&asset.TryGetProperty("scene",out var scene)&&scene.ValueKind==JsonValueKind.Object&&scene.TryGetProperty("clips",out var clips)&&clips.ValueKind==JsonValueKind.Array)
+                foreach(var clip in clips.EnumerateArray())if(clip.ValueKind==JsonValueKind.Object&&clip.TryGetProperty("native",out _))return true;
+        return false;
     }
 
     public static void Write(Stream stream, DatabaseDocument database)

@@ -20,7 +20,7 @@ public sealed record MeshRecord(string Name, double[][] Positions, int[][] Trian
 public sealed record UvSetRecord(int Set, double[][] Values, int? NativeDimension = null, int? NativeFormat = null);
 public sealed record WeightRecord(int Vertex, int Bone, double Weight);
 public sealed record ShapeRecord(string Name, double[][] Offsets);
-public sealed record ClipRecord(string Name, double Duration, double Fps, TrackRecord[] Tracks);
+public sealed record ClipRecord(string Name, double Duration, double Fps, TrackRecord[] Tracks, NativeAnimationMetadata? Native = null);
 public sealed record TrackRecord(int Bone, string Channel, KeyRecord[] Keys);
 public sealed record KeyRecord(double Time, double[] Value);
 

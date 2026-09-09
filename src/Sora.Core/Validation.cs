@@ -213,6 +213,7 @@ public static class Validation
             Require(double.IsFinite(clip.Duration) && clip.Duration >= 0 && clip.Duration <= 86400 && double.IsFinite(clip.Fps) && clip.Fps >= 1 && clip.Fps <= 240, "Invalid clip timing");
             Require(clip.Tracks is not null, "Missing tracks");
             Require(clip.Tracks!.Length <= 12288, "Track limit exceeded");
+            if(clip.Native is not null) { totalKeys+=NativeClip(clip);Require(totalKeys<=10_000_000,"Animation key and scalar limit exceeded"); }
             var targets = new HashSet<(int, string)>();
             foreach (var track in clip.Tracks!)
             {
@@ -232,6 +233,27 @@ public static class Validation
                 }
             }
         }
+    }
+    private static long NativeClip(ClipRecord clip)
+    {
+        var metadata=clip.Native!;
+        if(metadata.Source is {} source) { Name(source.ResourcePath);Name(source.Cab);PathId(source.PathId);Name(source.ManifestHash); }
+        Require(metadata.CustomScalars is not null&&metadata.CustomScalars.Length<=4096,"Invalid native custom scalar collection");
+        Require(metadata.Diagnostics is not null&&metadata.Diagnostics.Length<=4096,"Invalid native animation diagnostics");
+        foreach(string diagnostic in metadata.Diagnostics!)Name(diagnostic);
+        var identities=new HashSet<(uint,int,int,uint)>();long count=0;
+        foreach(var track in metadata.CustomScalars!)
+        {
+            Require(track is not null,"Null native custom scalar track");
+            Require(track!.TypeId==95&&track.CustomType==0&&track.Attribute>=143,"Unsupported native custom Animator scalar identity");
+            Require(identities.Add((track.Path,track.TypeId,track.CustomType,track.Attribute)),"Duplicate native custom scalar identity");
+            Require(float.IsFinite(track.SampleRate)&&track.SampleRate>=1&&track.SampleRate<=240&&Math.Abs(track.SampleRate-clip.Fps)<=0.000001,"Native scalar sample rate differs from clip");
+            Require(track.Values is not null&&track.Values.Length is >0 and <=1_000_000,"Invalid native scalar sample count");
+            Require(track.Values!.All(float.IsFinite),"Nonfinite native scalar sample");
+            Require(Math.Abs((track.Values!.Length-1)/(double)track.SampleRate-clip.Duration)<=0.000001,"Native scalar samples do not span the clip interval");
+            count+=track.Values!.Length;Require(count<=10_000_000,"Native scalar sample limit exceeded");
+        }
+        return count;
     }
     static void Identity(NativeIdentity? id) { Require(id is not null,"Missing native identity"); Name(id!.Cab); PathId(id.PathId); }
     static void PathId(string? id) => Require(id is not null && long.TryParse(id, System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture,out _),"Invalid signed path ID");

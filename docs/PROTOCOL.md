@@ -71,3 +71,18 @@ into this basis before creating a SceneDocument. A rolled two-bone fixture verif
 the bridge contract; it does not establish native humanoid retargeting coverage.
 Bone names must fit Blender's 63-byte UTF-8 limit and are rejected before import if
 they would be truncated. No silent skeleton-name remapping is performed.
+## Native clip metadata in SRED v2
+
+`ClipRecord.native` is optional on read. When present it stores source
+`{resourcePath,cab,pathId,manifestHash}`, custom scalar tracks and diagnostics.
+Source may be null when an in-memory conversion has no resolved native origin.
+Custom tracks contain `{path,typeId,customType,attribute,sampleRate,values}`;
+native path and attribute are unsigned 32-bit identities, and the source object
+pathId is a signed 64-bit decimal string. Scalar time is index/sampleRate.
+Rates/counts must cover the same interval as the clip; all values are finite;
+identity tuples are unique and scalar samples share the scene animation budget.
+
+Old v1 and v2 clips without this field remain readable. V1 explicitly rejects a
+native clip field. V2 writers persist embedded metadata automatically. Earlier
+v2 readers with a strict older record schema reject the new field; this is not
+a claim of forward compatibility with those implementations.

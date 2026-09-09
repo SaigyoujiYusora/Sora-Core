@@ -66,6 +66,23 @@ internal static class ResourceIndexTests
             reject(() => DatabaseFile.ParsePayload(System.Text.Encoding.UTF8.GetBytes(json.Replace("\"manifestHash\":", "\"unknown\":0,\"manifestHash\":"))));
             reject(() => DatabaseFile.ParsePayload(System.Text.Encoding.UTF8.GetBytes(json.Replace("\"files\":[{", "\"files\":[null,{"))));
         });
+        test("native resource merge keeps decoded rows and remaps appended source files", () => {
+            var extra=new ResourceFileRecord("StreamingAssets/VFS/other/index.blc",new("Bundles/Windows/clip.ab","other.bin",0,200,false,0));
+            var fresh=index with{Files=[extra,file],Cabs=[new("CAB-a","indexed",1,decoded.Entry,null,null,null),new("CAB-clip","decoded",0,new("CAB-clip",0,80),["assets/clip.fbx"],[74],["CAB-a"])]};
+            string before=JsonSerializer.Serialize(index,WireJson.Options);var merged=EndfieldResourceIndexMerge.Merge(index,fresh);
+            if(merged.Files.Length!=2||merged.Files[0]!=file||merged.Cabs.Single(x=>x.Id=="CAB-a").Status!="decoded"||merged.Cabs.Single(x=>x.Id=="CAB-clip").File!=1||before!=JsonSerializer.Serialize(index,WireJson.Options))throw new Exception("Resource merge lost decoded metadata or changed old indices");
+            using var stream=new MemoryStream();DatabaseFile.Write(stream,new("v",[],merged));stream.Position=0;if(DatabaseFile.Read(stream).ResourceIndex!.Cabs.Length!=4)throw new Exception();
+        });
+        test("native resource merge upgrades unresolved CAB without downgrading decoded data", () => {
+            var fresh=index with{Cabs=[new("CAB-missing","decoded",0,new("CAB-missing",0,10),[],[74],[]),new("CAB-a","unresolved",null,null,null,null,null)]};
+            var merged=EndfieldResourceIndexMerge.Merge(index,fresh);
+            if(merged.Cabs.Single(x=>x.Id=="CAB-missing").Status!="decoded"||merged.Cabs.Single(x=>x.Id=="CAB-a").ContainerPaths!.Single()!="assets/actor.prefab")throw new Exception();
+        });
+        test("native resource merge rejects snapshot file and decoded metadata conflicts", () => {
+            reject(()=>EndfieldResourceIndexMerge.Merge(index,index with{ManifestHash="changed"}));
+            reject(()=>EndfieldResourceIndexMerge.Merge(index,index with{Files=[file with{Resource=file.Resource with{Offset=124}}]}));
+            reject(()=>EndfieldResourceIndexMerge.Merge(index,index with{Cabs=[decoded with{ContainerPaths=["assets/changed.prefab"]},index.Cabs[1],index.Cabs[2]]}));
+        });
     }
 
     private static byte[] Envelope(byte[] payload, uint version)

@@ -103,6 +103,8 @@ NprTests.Run(Test, Reject);
 ResourceIndexTests.Run(Test, Reject);
 FaceMorphTests.Run(Test, Reject);
 AclTests.Run(Test, Reject);
+HumanoidTests.Run(Test, Reject);
+NativeAnimationServiceTests.Run(Test, Reject);
 if (args.Length == 1)
 {
     Directory.CreateDirectory(args[0]);
