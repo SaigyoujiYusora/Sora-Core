@@ -8,5 +8,10 @@
     "path": "acl/decompression/impl/decompress.impl.h",
     "before": "81aa512a1ca2e66fc856e75714462009723cd5e8f1b58a4355d85e3205ae51ef",
     "after": "e733111f84c2b2dc72d17a759b42f9dca99c26b53c9c27d9983a06e31b750b16"
+  },
+  {
+    "path": "dllmain.cpp",
+    "before": "2fa4edee5d952230c069d7d666fa4babd59e072323ca0134693fc86276af6828",
+    "after": "94eda98d3e68b798e2a5823347a067545d34974a3a475ed40ef45e667203f5e7"
   }
 ]

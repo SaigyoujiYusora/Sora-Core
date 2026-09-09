@@ -27,7 +27,7 @@
   "compilerVersion": "clang version 23.1.0 (https://github.com/llvm/llvm-project.git ea7d852a70e8bdfaf601d6626a760f9771b2c4b4)\nTarget: x86_64-w64-windows-gnu\nThread model: posix\nInstalledDir: F:/Games/Endfield-unpack/ENDF-DR/audit/toolchains/llvm-mingw-20260826-ucrt-x86_64/bin\nConfiguration file: F:/Games/Endfield-unpack/ENDF-DR/audit/toolchains/llvm-mingw-20260826-ucrt-x86_64/bin/x86_64-w64-windows-gnu.cfg\n",
   "workingDirectory": "source",
   "output": "../../native/win-x64/Sora.Acl.dll",
-  "sha256": "1f56d705c4e5111b2c0490a0480e04a6c8f72564b488eace2b43df7265f11ec3",
+  "sha256": "c84a6a84a1c9b9d35c75659507d3ca905e6144ab4cc527540f808d019142b5f5",
   "lineEndingMode": "Source verification uses source-hashes.json with overrides from source-modifications.json.",
   "compilerBinaries": {
     "clang++.exe": "bf58cf0e544a308660645aad1fe65ae9cbc44b0871e4010278f3d9551f86a690",
