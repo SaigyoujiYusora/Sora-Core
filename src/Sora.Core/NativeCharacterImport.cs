@@ -49,6 +49,14 @@ public static class NativeCharacterImport
         var decoded = new SerializedDocument(actor.Document.UnityVersion, [], [avatar.Object, .. meshes]);
         var database = CharacterGeometry.Convert(decoded, prefab.Path);
         var scene = database.Assets[0].Scene!;
+        scene = ApplyMaterials(resources, scene, meshMaterials, meshIdentities);
+        scene = scene with { FaceDriver = NativeFaceMorph.Extract(resources, prefab.Path, avatar, scene) };
+        database = new(resources.Manifest.Version, [database.Assets[0] with { Detail = "Native geometry, materials and authored facial controls; body animation not included", Scene = scene }]);
+        Validation.Database(database); return database;
+    }
+
+    internal static SceneDocument ApplyMaterials(GameResources resources, SceneDocument scene, Dictionary<string, ResolvedAsset[]> meshMaterials, Dictionary<string,string> meshIdentities)
+    {
         var materials = new List<MaterialRecord>();
         var textures = new Dictionary<string, TextureRecord>(StringComparer.Ordinal);
         var descriptors = new Dictionary<string, TextureDescriptor>(StringComparer.Ordinal);
@@ -87,9 +95,7 @@ public static class NativeCharacterImport
             outputMeshes.Add(mesh with { Material = slots[0], MaterialSlots = slots.ToArray(), SourceId = meshIdentities[mesh.Name] });
         }
         scene = scene with { Meshes = outputMeshes.ToArray(), Materials = materials.ToArray(), Textures = textures.Values.ToArray(), TextureDescriptors = descriptors.Values.ToArray() };
-        scene = scene with { FaceDriver = NativeFaceMorph.Extract(resources, prefab.Path, avatar, scene) };
-        database = new(resources.Manifest.Version, [database.Assets[0] with { Detail = "Native geometry, materials and authored facial controls; body animation not included", Scene = scene }]);
-        Validation.Database(database); return database;
+        return scene;
     }
 
     private static TextureRecord DecodeTexture(GameResources resources, ResolvedAsset asset, string identity, string usage)

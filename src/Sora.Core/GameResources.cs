@@ -25,7 +25,7 @@ public sealed class GameResources
         var unavailable = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         var physicalSources = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (string location in new[] { "Persistent", "StreamingAssets" })
-            foreach (string block in new[] { "1CDDBF1F", "7064D8E2", "0CE8FA57" })
+            foreach (string block in new[] { "1CDDBF1F", "7064D8E2", "0CE8FA57", "775A31D1" })
             {
                 string indexPath = Path.Combine(data, location, "VFS", block, block + ".blc");
                 if (!File.Exists(indexPath)) continue;
@@ -138,9 +138,37 @@ public sealed class GameResources
         var bytes = archive.Extract(name); return bytes.AsSpan((int)offset, length).ToArray();
     }
 
+    public string[] LogicalNames => files.Keys.Order(StringComparer.Ordinal).ToArray();
+    public ResourceFileRecord LogicalSource(string name) { var source = GetSource(name); return new(Path.GetRelativePath(sourceRoot, source.Index).Replace('\\','/'), source.Resource); }
+    public ResolvedAsset ResolveHash(long hash, int classId)
+    {
+        var matches=Manifest.Assets.Where(a=>a.Hash==hash).DistinctBy(a=>(a.Hash,a.Path,a.Bundle)).ToArray();
+        Validation.Require(matches.Length==1,"Native resource hash absent or ambiguous: "+hash);return ResolveAddress(matches[0],classId);
+    }
+    public ResolvedAsset ResolveAddress(AddressResource address, int classId)
+    {
+        var targets = new Dictionary<(string,long),ResolvedAsset>();
+        foreach (var cab in LoadClosure(address.Bundle))
+            foreach (var container in GetDocument(cab).Objects.Where(o => o.ClassId == 142))
+            {
+                var data = JsonSerializer.SerializeToElement(container.Data, WireJson.Options);
+                bool hashTable = data.TryGetProperty("m_HashContainer", out var hashes) && hashes.GetProperty("Array").EnumerateArray().Any(r => r.GetProperty("first").GetInt64() == address.Hash);
+                var rows = (hashTable ? hashes : data.GetProperty("m_Container")).GetProperty("Array");
+                foreach (var row in rows.EnumerateArray())
+                {
+                    bool match = hashTable ? row.GetProperty("first").GetInt64() == address.Hash : row.GetProperty("first").GetString()!.Equals(address.Path,StringComparison.OrdinalIgnoreCase);
+                    if (!match) continue;
+                    var target = Resolve(cab,row.GetProperty("second").GetProperty("asset"));
+                    if(target is not null && target.Object.ClassId == classId) targets.TryAdd((target.Cab,target.Object.Id),target);
+                }
+            }
+        Validation.Require(targets.Count == 1,"Native resource target absent or ambiguous: " + address.Path + " hash " + address.Hash);
+        return targets.Values.Single();
+    }
+
     private CabSource GetCab(string cab) => cabs.TryGetValue(cab, out var source) ? source : throw new KeyNotFoundException("CAB is outside the loaded dependency closure: " + cab);
     private Source GetSource(string name) => files.TryGetValue(Normalize(name), out var source) ? source : throw new KeyNotFoundException("Logical game resource is absent: " + name);
-    private byte[] GetBytes(string name) { var source = GetSource(name); return BlockIndex.Extract(source.Index, source.Resource); }
+    public byte[] GetBytes(string name) { var source = GetSource(name); return BlockIndex.Extract(source.Index, source.Resource); }
     private static string Leaf(string value) => value.Replace('\\', '/').Split('/')[^1];
     private static string Normalize(string name)
     {

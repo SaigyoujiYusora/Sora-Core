@@ -33,6 +33,18 @@ try
         DatabaseFile.WriteAtomic(args[2], DatabaseFile.ParsePayload(payload));
         Console.WriteLine("{\"ok\":true}");
     }
+    else if (args.Length == 3 && args[0] == "npc-search")
+    {
+        Console.WriteLine(JsonSerializer.Serialize(NativeNpcImport.Search(new GameResources(args[1]),args[2]),WireJson.Options));
+    }
+    else if (args.Length == 4 && args[0] == "import-npc")
+    {
+        var resources=new GameResources(args[1]);
+        var database=NativeNpcImport.Import(resources,args[2]) with {ResourceIndex=resources.SnapshotResourceIndex()};
+        DatabaseFile.WriteAtomic(args[3],database);
+        var scene=database.Assets[0].Scene!;
+        Console.WriteLine(JsonSerializer.Serialize(new {ok=true,meshes=scene.Meshes.Length,bones=scene.Bones.Length,controls=scene.FaceDriver?.Controls.Length},WireJson.Options));
+    }
     else if (args.Length == 4 && args[0] == "import-character")
     {
         var resources = new GameResources(args[1]);
@@ -119,7 +131,7 @@ try
     }
     else
     {
-        Console.Error.WriteLine("Usage:\n  Sora-Core rpc\n  Sora-Core pack <document.json> <output.sredb>\n  Sora-Core manifest <manifest.hgmmap> <output.sredb>\n  Sora-Core blc-list <index.blc>\n  Sora-Core blc-extract <index.blc> <resource-name> <output>\n  Sora-Core vfs-list <bundle>\n  Sora-Core vfs-extract <bundle> <entry-name> <output>\n  Sora-Core unity-inspect <serialized-asset>\n  Sora-Core character-geometry <serialized-asset> <identity> <output.sredb>\n  Sora-Core import-character <game-root> <character-query> <output.sredb>\n  Sora-Core animation-search <game-root> <query> [<character-prefab>]\n  Sora-Core animation-clips <game-root> <resource> [<character-prefab>]\n  Sora-Core animation-export <game-root> <input.sredb> <asset> <resource> <output.sredb> [<cab> <path-id>]");
+        Console.Error.WriteLine("Usage:\n  Sora-Core rpc\n  Sora-Core pack <document.json> <output.sredb>\n  Sora-Core manifest <manifest.hgmmap> <output.sredb>\n  Sora-Core blc-list <index.blc>\n  Sora-Core blc-extract <index.blc> <resource-name> <output>\n  Sora-Core vfs-list <bundle>\n  Sora-Core vfs-extract <bundle> <entry-name> <output>\n  Sora-Core unity-inspect <serialized-asset>\n  Sora-Core character-geometry <serialized-asset> <identity> <output.sredb>\n  Sora-Core import-character <game-root> <character-query> <output.sredb>\n  Sora-Core npc-search <game-root> <query>\n  Sora-Core import-npc <game-root> <npc-query> <output.sredb>\n  Sora-Core animation-search <game-root> <query> [<character-prefab>]\n  Sora-Core animation-clips <game-root> <resource> [<character-prefab>]\n  Sora-Core animation-export <game-root> <input.sredb> <asset> <resource> <output.sredb> [<cab> <path-id>]");
         Environment.ExitCode = 2;
     }
 }
@@ -145,7 +157,7 @@ static string Handle(string line)
         var parameters = root.GetProperty("params");
         Validation.Require(parameters.ValueKind == JsonValueKind.Object, "Params must be an object");
         object result;
-        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene", "animation-search", "animation-clips", "animation-import" }, nativeGameExtraction = true, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
+        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "inspect", "search", "closure", "scene", "animation-search", "animation-clips", "animation-import" }, nativeGameExtraction = true, nativeNpcExtraction = new { entryPoint = "CLI npc-search/import-npc", verifiedSelections = new[] { "npc_girl_efengineer_a_01" } }, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
         else if (method == "animation-search")
         {
             var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));

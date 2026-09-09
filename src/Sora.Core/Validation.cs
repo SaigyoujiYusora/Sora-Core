@@ -120,6 +120,7 @@ public static class Validation
             Require(head.Status=="native-head-axes-unverified","Unsupported head axes status");
         }
         if(scene.FaceDriver is {} face) NativeFaceMorph.Validate(face,scene);
+        if(scene.Npc is {} npc) NativeNpcImport.Validate(scene,npc);
         names.Clear();
         var textureNames = new HashSet<string>(StringComparer.Ordinal);
         long textureBytes = 0;

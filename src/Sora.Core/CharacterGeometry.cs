@@ -25,7 +25,7 @@ public static class CharacterGeometry
         return Matrix4x4.CreateScale(Vector(value.GetProperty("s"))) * Matrix4x4.CreateFromQuaternion(quaternion) * Matrix4x4.CreateTranslation(Vector(value.GetProperty("t")));
     }
 
-    public static DatabaseDocument Convert(SerializedDocument source, string identity, int lod = 0)
+    public static DatabaseDocument Convert(SerializedDocument source, string identity, int lod = 0, bool allowEmptyMeshes = false, bool allowAuxiliaryScale = false)
     {
         Validation.Require(lod >= 0 && lod <= 3, "LOD must be between zero and three");
         var avatars = source.Objects.Where(x => x.ClassId == 90).Take(2).ToArray();
@@ -47,7 +47,7 @@ public static class CharacterGeometry
         }
         var selected = source.Objects.Where(x => x.ClassId == 43).Select(x => (x.Id, Mesh: JsonSerializer.SerializeToElement(x.Data, WireJson.Options)))
             .Where(x => x.Mesh.GetProperty("m_Name").GetString()!.EndsWith("_lod" + lod, StringComparison.OrdinalIgnoreCase)).Take(4097).ToArray();
-        Validation.Require(selected.Length is > 0 and <= 4096, "Selected mesh count is empty or exceeds limit");
+        Validation.Require((selected.Length > 0 || allowEmptyMeshes) && selected.Length <= 4096, "Selected mesh count is empty or exceeds limit");
         var anchors = new Dictionary<int, Matrix4x4>();
         foreach (var entry in selected)
         {
@@ -83,7 +83,7 @@ public static class CharacterGeometry
             restWorld[i] = anchors.TryGetValue(i, out var authoritative) ? authoritative : Local(poses[i]) * (parent < 0 ? Matrix4x4.Identity : restWorld[parent]);
             var rest = localReflection * restWorld[i] * space;
             Validation.Require(Matrix4x4.Decompose(rest, out var scale, out var rotation, out var head), "Invalid avatar rest matrix");
-            Validation.Require(Vector3.Distance(scale, Vector3.One) < 0.001, "Scaled avatar rest bones require a separate conversion");
+            Validation.Require(Vector3.Distance(scale, Vector3.One) < 0.001 || (allowAuxiliaryScale && !anchors.ContainsKey(i)), "Scaled avatar rest bones require a separate conversion: " + identity + " node " + i + " scale " + scale);
             var axis = Vector3.Normalize(Vector3.Transform(Vector3.UnitY, rotation));
             var shortest = axis.Y < -0.999999f ? Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI) : Quaternion.Normalize(new Quaternion(axis.Z, 0, -axis.X, 1 + axis.Y));
             var twist = Quaternion.Normalize(Quaternion.Conjugate(shortest) * rotation);

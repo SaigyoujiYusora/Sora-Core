@@ -102,6 +102,7 @@ TextureTests.Run(Test, Reject);
 NprTests.Run(Test, Reject);
 ResourceIndexTests.Run(Test, Reject);
 FaceMorphTests.Run(Test, Reject);
+NativeNpcTests.Run(Test, Reject);
 AclTests.Run(Test, Reject);
 HumanoidTests.Run(Test, Reject);
 NativeAnimationServiceTests.Run(Test, Reject);

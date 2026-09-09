@@ -7,7 +7,7 @@ public sealed record DatabaseDocument(string GameVersion, AssetRecord[] Assets, 
 public sealed record AssetRecord(string Id, string Label, string Detail, string Kind,
     string[] Dependencies, SceneDocument? Scene = null);
 public sealed record SceneDocument(string Name, BoneRecord[] Bones, MeshRecord[] Meshes,
-    MaterialRecord[] Materials, ClipRecord[] Clips, TextureRecord[]? Textures = null, TextureDescriptor[]? TextureDescriptors = null, HeadReferenceRecord? HeadReference = null, FaceDriverRecord? FaceDriver = null);
+    MaterialRecord[] Materials, ClipRecord[] Clips, TextureRecord[]? Textures = null, TextureDescriptor[]? TextureDescriptors = null, HeadReferenceRecord? HeadReference = null, FaceDriverRecord? FaceDriver = null, NativeNpcProvenance? Npc = null);
 public sealed record HeadReferenceRecord(int Bone, string Name, string NativePath, double[] RestMatrix, string Status = "native-head-axes-unverified");
 public sealed record BoneRecord(string Name, int Parent, double[] Head, double[] Tail, double Roll = 0, double[]? RestMatrix = null, string? SourcePath = null, uint? SourceHash = null);
 public sealed record MaterialRecord(string Name, double[] BaseColor, double Metallic, double Roughness,

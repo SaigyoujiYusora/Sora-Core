@@ -4,12 +4,12 @@ public sealed record FaceDriverRecord(int Version, string SourcePath, string Sou
     string AvatarCab, long AvatarObject, string RotationOrder, int[] RotationSigns, double RestFitDegrees,
     FaceBoneRecord[] Bones, FaceControlRecord[] Controls, FacePresetRecord[] Presets,
     FaceMappingSourceRecord[]? AdditionalSources = null,
-    int? PrimaryBoneCount = null, int? PrimaryControlCount = null);
+    int? PrimaryBoneCount = null, int? PrimaryControlCount = null, NativeNpcMorphSource[]? NativeSources = null);
 public sealed record FaceMappingSourceRecord(string SourcePath, string SourceCab, long SourceObject,
     string AvatarCab, long AvatarObject, int DataType, double RestFitDegrees,
-    int BoneStart, int BoneCount, int ControlStart, int ControlCount);
+    int BoneStart, int BoneCount, int ControlStart, int ControlCount, bool SourceAvatarNull = false);
 public sealed record FaceBoneRecord(int NativeId, int NameHash, string NativePath, int SceneBone,
-    double[] Position, double[] Rotation, double[] Scale);
+    double[] Position, double[] Rotation, double[] Scale, int? AvatarNodeIndex = null);
 public sealed record FaceDeltaRecord(int Bone, double[] Position, double[] Rotation, double[] Scale);
 public sealed record FaceShaderRecord(string Parameter, int RendererMask, double DefaultValue, int BlendMode, int VectorIndex);
 public sealed record FaceControlRecord(string Name, int Id, int NameHash, int TagHash, int PartType,

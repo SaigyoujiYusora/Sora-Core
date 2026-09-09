@@ -86,8 +86,8 @@ public static class NativeAnimationClip
         Validation.Scene(scene);
         Validation.Require(binding.RootScalarsValidated,"Native clip conversion requires verified root-buffer scalar agreement");
         var indexed = scene.Bones.Select((bone,index)=>(bone,index)).Where(x=>x.bone.SourceHash.HasValue).ToArray();
-        Validation.Require(indexed.Select(x=>x.bone.SourceHash).Distinct().Count()==indexed.Length, "Imported rig has duplicate source hashes");
-        var byHash = indexed.ToDictionary(x=>x.bone.SourceHash!.Value,x=>x.index);
+        Validation.Require(scene.Npc is not null || indexed.Select(x=>x.bone.SourceHash).Distinct().Count()==indexed.Length, "Imported rig has duplicate source hashes");
+        var byHash = scene.Npc is not null?NativeNpcImport.AnimationBindings(scene,rig.SourcePaths):indexed.ToDictionary(x=>x.bone.SourceHash!.Value,x=>x.index);
         int Join(uint hash)
         {
             Validation.Require(rig.SourcePaths.TryGetValue(hash,out string? path) && byHash.TryGetValue(hash,out _), "Animation identity is absent from source or imported rig");

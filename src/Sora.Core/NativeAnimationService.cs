@@ -58,6 +58,14 @@ public static class NativeAnimationService
         ResolvedAsset avatar;
         if (!string.IsNullOrWhiteSpace(avatarResource))
             avatar = ResolveResource(resources, avatarResource, 90);
+        else if(scene.Npc is {} npc)
+        {
+            var declaration=NativeNpcImport.Parse(npc.Declaration);
+            var template=resources.ResolveAddress(NativeNpcImport.DeclaredResource(resources,declaration.Template,"template"),114);
+            Validation.Require(template.Cab==npc.TemplateCab&&template.Object.Id==npc.TemplateObject,"NPC template identity changed since import");
+            avatar=resources.Resolve(template.Cab,Json(template.Object).GetProperty("sizeAvatar"))??throw new InvalidDataException("NPC common Avatar is missing");
+            Validation.Require(avatar.Object.ClassId==90&&avatar.Cab==npc.CommonAvatarCab&&avatar.Object.Id==npc.CommonAvatarObject,"NPC common Avatar identity changed since import");
+        }
         else
         {
             var face = scene.FaceDriver;
@@ -83,7 +91,18 @@ public static class NativeAnimationService
             Validation.Require(selection is not null && clips.Any(clip => clip.Cab == selection.Cab && clip.PathId == selection.PathId),
                 "Select an exact clip referenced by this character controller");
         }
-        var conversion = NativeAnimationClip.Import(resources, resourcePath, rig, scene, workerExecutable, selection);
+        // NPC scale is authored outside the Avatar. Validate/solve in its original
+        // unscaled native rest frame, then scale only exported location keys.
+        double npcScale=scene.Npc is {} source?NativeNpcImport.Parse(source.Declaration).Scale:1;
+        var bindingScene=scene;
+        if(npcScale!=1)
+        {
+            double[] Unscale(double[] v)=>v.Select(x=>x/npcScale).ToArray();
+            double[] Rest(double[] v){var r=(double[])v.Clone();r[3]/=npcScale;r[7]/=npcScale;r[11]/=npcScale;return r;}
+            bindingScene=scene with {Bones=scene.Bones.Select(b=>b with {Head=Unscale(b.Head),Tail=Unscale(b.Tail),RestMatrix=Rest(b.RestMatrix!)}).ToArray(),HeadReference=scene.HeadReference is {} head?head with{RestMatrix=Rest(head.RestMatrix)}:null};
+        }
+        var conversion = NativeAnimationClip.Import(resources, resourcePath, rig, bindingScene, workerExecutable, selection);
+        if(npcScale!=1)conversion=conversion with {Clip=conversion.Clip with {Tracks=conversion.Clip.Tracks.Select(t=>t.Channel=="location"?t with {Keys=t.Keys.Select(k=>k with {Value=k.Value.Select(v=>v*npcScale).ToArray()}).ToArray()}:t).ToArray()}};
         Validation.Require(conversion.Clip.Native is not null && conversion.Clip.Native.Source is not null,
             "Native animation conversion did not retain its source metadata");
         return new(conversion.Clip, scene.Bones);
