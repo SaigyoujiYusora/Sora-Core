@@ -17,6 +17,7 @@ public sealed class NativeHumanoidRig
     public ReadOnlyDictionary<uint, string> SourcePaths { get; }
     public ReadOnlyDictionary<uint, uint?> SourceParents { get; }
     public float HumanScale { get; }
+    public Vector4 TwistPolicy { get; }
 
     public NativeHumanoidRig(NativeHumanNode[] nodes, NativeHumanAxes[] axes, int[] humanNodes, float[] masses,
         float humanScale, Vector4 twistPolicy, IReadOnlyDictionary<uint, string>? sourcePaths = null,
@@ -24,7 +25,7 @@ public sealed class NativeHumanoidRig
     {
         Validation.Require(nodes is not null && nodes.Length is > 0 and <= 4096 && axes is not null && axes.Length <= 4096, "Unsupported or empty native human skeleton");
         Validation.Require(humanNodes is not null && humanNodes.Length == 25 && masses is not null && masses.Length == 25, "Expected native 25-slot human schema");
-        Validation.Require(twistPolicy == new Vector4(1, 0, 1, 0), "Unsupported humanoid twist policy; expected arm/forearm/upper-leg/leg 1/0/1/0");
+        Validation.Require(twistPolicy == new Vector4(1, 0, 1, 0) || twistPolicy == Vector4.Zero, "Unsupported humanoid twist policy; expected arm/forearm/upper-leg/leg 1/0/1/0 or 0/0/0/0");
         Validation.Require(float.IsFinite(humanScale) && humanScale > 0, "Invalid native human scale");
         var identities = new HashSet<uint>(); var paths = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < nodes!.Length; i++)
@@ -52,7 +53,7 @@ public sealed class NativeHumanoidRig
         Validation.Require(masses!.Sum() > 0 && float.IsFinite(masses!.Sum()), "Invalid total human mass");
         Nodes = Array.AsReadOnly(nodes.Select(x => x with { Rotation = Quaternion.Normalize(x.Rotation) }).ToArray());
         Axes = Array.AsReadOnly(axes.Select(x => x with { Pre = Quaternion.Normalize(x.Pre), Post = Quaternion.Normalize(x.Post) }).ToArray());
-        HumanNodes = Array.AsReadOnly((int[])humanNodes!.Clone()); Masses = Array.AsReadOnly((float[])masses!.Clone()); HumanScale = humanScale;
+        HumanNodes = Array.AsReadOnly((int[])humanNodes!.Clone()); Masses = Array.AsReadOnly((float[])masses!.Clone()); HumanScale = humanScale; TwistPolicy = twistPolicy;
         var allPaths = sourcePaths is null ? nodes.ToDictionary(x => x.PathHash, x => x.Path) : sourcePaths.ToDictionary(x => x.Key, x => x.Value);
         foreach (var node in nodes) { if (node.PathHash == 0 && node.Path == "" && !allPaths.ContainsKey(0)) allPaths.Add(0, ""); Validation.Require(allPaths.GetValueOrDefault(node.PathHash) == node.Path, "Human node and source Avatar paths disagree"); }
         Validation.Require(allPaths.Count <= 16384 && allPaths.Values.All(x => x is not null && x.Length <= 4096 && !x.Any(char.IsControl)), "Invalid source Avatar paths");

@@ -22,6 +22,22 @@ internal static class HumanoidTests
             Near(result.Body.Single(x => x.HumanSlot == 17).Rotation, Quaternion.Identity);
             Near(result.Body.Single(x => x.HumanSlot == 19).Rotation, Quaternion.Identity);
         });
+        test("native zero proximal twist preserves folded multi-axis limb chains", () => {
+            var body = new float[61];
+            foreach (int channel in new[] { 21, 22, 23, 24, 25, 26, 27, 28, 43, 44, 45, 46, 47, 48, 49, 50, 51 })
+                body[channel] = channel % 2 == 0 ? -.37f : .61f;
+            var input = neutral with { BodyMuscles = body };
+            var player = NativeHumanoidPose.Evaluate(rig, input).Body.ToDictionary(x => x.HumanSlot, x => x.Rotation);
+            var npcRig = Copy(rig, policy: Vector4.Zero);
+            if (npcRig.TwistPolicy != Vector4.Zero) throw new Exception("Native twist parameters were lost");
+            var npc = NativeHumanoidPose.Evaluate(npcRig, input).Body.ToDictionary(x => x.HumanSlot, x => x.Rotation);
+            foreach (var (upper, lower, end) in new[] { (1, 3, 5), (2, 4, 6), (14, 16, 18), (15, 17, 19) })
+            {
+                Near(npc[upper] * npc[lower] * npc[end], player[upper] * player[lower] * player[end]);
+                if (Math.Abs(npc[upper].X) > 1e-6f) throw new Exception("Proximal twist remained on the zero-policy parent");
+            }
+            if (Math.Abs(Quaternion.Dot(npc[14], player[14])) > .999f) throw new Exception("Nonzero arm twist fixture did not exercise redistribution");
+        });
         test("native root removes full nonidentity motion frame", () => {
             var body = new float[61]; body[0] = .25f; body[43] = -.3f;
             var baseline = neutral with { BodyMuscles = body, RootTranslation = new(.2f, 1.2f, -.4f), RootRotation = Quaternion.CreateFromYawPitchRoll(.3f, .1f, -.2f) };
@@ -46,6 +62,8 @@ internal static class HumanoidTests
             nodes = rig.Nodes.ToArray(); nodes[2] = nodes[2] with { Parent = 3 }; reject(() => Copy(rig, nodes: nodes));
             var slots = rig.HumanNodes.ToArray(); slots[5] = -1; reject(() => Copy(rig, slots: slots));
             reject(() => Copy(rig, policy: new(1, .5f, 1, 0)));
+            foreach (var policy in new[] { new Vector4(0, 0, 1, 0), new Vector4(.5f, 0, .5f, 0), new Vector4(float.NaN, 0, 0, 0) })
+                reject(() => Copy(rig, policy: policy));
         });
         test("native rig snapshots identity and mass arrays", () => {
             var nodes = rig.Nodes.ToArray(); var masses = rig.Masses.ToArray(); var copied = Copy(rig, nodes: nodes, masses: masses); nodes[1] = nodes[1] with { Path = "changed" }; masses[0] = 0;

@@ -60,8 +60,17 @@ public static class NativeHumanoidPose
             untwisted.Add(bone, Quaternion.Normalize(axis.Pre * swing * Quaternion.Conjugate(axis.Post)));
         }
         var result = new Dictionary<int, Quaternion>(raw);
-        foreach (var (parent, child) in new[] { (3, 5), (4, 6), (16, 18), (17, 19) })
-        { result[parent] = untwisted[parent]; result[child] = Quaternion.Normalize(Quaternion.Conjugate(untwisted[parent]) * raw[parent] * raw[child]); }
+        // Distal pairs precede proximal pairs: the proximal residual acts on the
+        // already redistributed child, preserving both authored twist channels.
+        foreach (var (parent, child, weight) in new[] { (3, 5, rig.TwistPolicy.W), (4, 6, rig.TwistPolicy.W),
+            (16, 18, rig.TwistPolicy.Y), (17, 19, rig.TwistPolicy.Y),
+            (1, 3, rig.TwistPolicy.Z), (2, 4, rig.TwistPolicy.Z), (14, 16, rig.TwistPolicy.X), (15, 17, rig.TwistPolicy.X) })
+        {
+            if (weight == 1) continue;
+            // The rig admits only the independently verified endpoint policies.
+            result[parent] = untwisted[parent];
+            result[child] = Quaternion.Normalize(Quaternion.Conjugate(untwisted[parent]) * raw[parent] * result[child]);
+        }
         return result;
     }
 
