@@ -16,6 +16,28 @@ selected by the user and uses argument arrays without a shell. It does not fetch
 install or redistribute Sora-Core. Asset paths stored in a database are metadata;
 opening a database never executes them or loads assemblies.
 
+# Map data extension point (placeholder)
+
+`map-status` with `params: {}` returns
+`{"supported":false,"state":"placeholder","message":"Map data parsing and scene import are not implemented."}`.
+It does not inspect a game folder or database. `capabilities.nativeExtraction.maps`
+remains `false`; listing the methods does not advertise a working map importer.
+
+`map-read` takes `params: {"mapId":"opaque-map-identity"}`. The identity must be
+nonblank, at most 1024 characters, and contain no control characters. Missing,
+invalid or unknown request fields fail with the usual protocol error. A valid
+request returns `{"status":{...same status...},"document":null}`. The envelope's
+`ok:true` means the request was handled; `status.supported:false` means no map was
+read. Clients must not interpret null as an empty map or import it into a scene.
+
+`IMapDataReader` in `MapData.cs` is the future reader boundary. Its separate typed
+request/result and document/chunk records carry an opaque map identity and chunks
+with opaque resource identities. These are not filesystem paths or native game
+format claims. `PlaceholderMapDataReader` performs only request validation; it
+does no discovery, file access, parsing, scene creation or mutation. A future
+implementation needs independently verified format and coordinate contracts.
+These records do not extend the SRED payload, schema version or existing scene IO.
+
 # Sora Endfield Database 2
 
 Extension `.sredb`. Bytes 0..7 are `SREDB\r\n\x1a`; bytes 8..11 are little-endian

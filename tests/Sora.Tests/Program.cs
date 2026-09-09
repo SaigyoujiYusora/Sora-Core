@@ -36,6 +36,18 @@ Test("scene roundtrip retains geometry, rig, face and animation", () => {
     var result = DatabaseFile.Read(memory);
     if (JsonSerializer.Serialize(sample, WireJson.Options) != JsonSerializer.Serialize(result, WireJson.Options)) throw new Exception("Roundtrip mismatch");
 });
+Test("map placeholder rejects invalid identity and never fabricates a document", () => {
+    IMapDataReader reader = new PlaceholderMapDataReader();
+    foreach (var id in new[] { "", " ", "bad\nmap", new string('x', 1025) })
+        Reject(() => reader.Read(new(id)));
+    Reject(() => reader.Read(null!));
+    var result = reader.Read(new("unresolved-map"));
+    if (reader.Status.Supported || reader.Status.State != "placeholder" || result.Document is not null
+        || result.Status != reader.Status) throw new Exception("Placeholder claimed map data");
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(result, WireJson.Options));
+    if (json.RootElement.GetProperty("document").ValueKind != JsonValueKind.Null)
+        throw new Exception("Missing explicit null map document");
+});
 Test("empty database", () => {
     using var memory = new MemoryStream(); DatabaseFile.Write(memory, new("empty", [])); memory.Position = 0;
     if (DatabaseFile.Read(memory).Assets.Length != 0) throw new Exception();
