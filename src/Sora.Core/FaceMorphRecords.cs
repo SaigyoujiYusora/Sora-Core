@@ -2,7 +2,12 @@ namespace Sora.Core;
 
 public sealed record FaceDriverRecord(int Version, string SourcePath, string SourceCab, long SourceObject,
     string AvatarCab, long AvatarObject, string RotationOrder, int[] RotationSigns, double RestFitDegrees,
-    FaceBoneRecord[] Bones, FaceControlRecord[] Controls, FacePresetRecord[] Presets);
+    FaceBoneRecord[] Bones, FaceControlRecord[] Controls, FacePresetRecord[] Presets,
+    FaceMappingSourceRecord[]? AdditionalSources = null,
+    int? PrimaryBoneCount = null, int? PrimaryControlCount = null);
+public sealed record FaceMappingSourceRecord(string SourcePath, string SourceCab, long SourceObject,
+    string AvatarCab, long AvatarObject, int DataType, double RestFitDegrees,
+    int BoneStart, int BoneCount, int ControlStart, int ControlCount);
 public sealed record FaceBoneRecord(int NativeId, int NameHash, string NativePath, int SceneBone,
     double[] Position, double[] Rotation, double[] Scale);
 public sealed record FaceDeltaRecord(int Bone, double[] Position, double[] Rotation, double[] Scale);
