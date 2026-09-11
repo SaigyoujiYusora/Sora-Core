@@ -18,8 +18,33 @@ public sealed class NativeAnimationBinding
     public int Scalars { get; }
     public float SampleRate { get; }
     public bool RootScalarsValidated { get; }
+    /// <summary>True for the classic single-stream storage, which has no separate root buffer to agree with.</summary>
+    public bool NonAclSingleStream { get; }
+    /// <summary>Storage notes of the classic single-stream decode (empty for ACL storage).</summary>
+    public ReadOnlyCollection<string> StorageNotes { get; } = Array.AsReadOnly(Array.Empty<string>());
     public bool HasHumanoid { get; }
     public float RootComparisonMaximumError { get; }
+    /// <summary>Authored clip interval. The decoded sample grid is not always aligned to it, so the authored end is
+    /// kept and the final decoded sample value is held to it instead of shortening the clip to the grid.</summary>
+    public double Duration { get; }
+    /// <summary>True when the authored end lies inside the final sample interval beyond the last decoded sample.</summary>
+    public bool AuthoredEndBeyondGrid { get; }
+
+    /// <summary>Observed native relation: the authored end may sit up to one sample interval past the last decoded
+    /// sample (walk loop: 65 samples at 60 Hz, grid 1.0666667, authored 1.0709809). The grid must cover the authored
+    /// interval, no key is fabricated and no authored duration is discarded.</summary>
+    private static double AuthoredInterval(JsonElement muscle, int samples, float rate, out bool beyondGrid)
+    {
+        double stop = muscle.GetProperty("m_StopTime").GetDouble();
+        double grid = (samples - 1) / (double)rate;
+        Validation.Require(muscle.GetProperty("m_StartTime").GetDouble() == 0 && stop > 0
+            && stop >= grid - 0.0001 && stop <= grid + 1.0 / rate + 0.0001, "Unsupported native animation time interval");
+        // Float32 authored ends carry a few ULPs of noise above the decoded grid (idle_to_battle 4.666667 vs
+        // 280/60 = 4.6666666667). Only a real sub-sample tail extends the duration; noise keeps the exact grid
+        // value so the frame count never gains a whole extra frame.
+        beyondGrid = stop > grid + 0.0001;
+        return beyondGrid ? stop : grid;
+    }
 
     public NativeAnimationBinding(JsonElement clip, AclSamples samples, AclSamples? rootSamples = null)
     {
@@ -29,7 +54,9 @@ public sealed class NativeAnimationBinding
         var buffer = clip.GetProperty("m_AclCompressedBuffer");
         var muscle = clip.GetProperty("m_MuscleClip");
         Validation.Require(NativeHumanoidRig.ArrayField(muscle.GetProperty("m_DeltaPose"), "m_DoFArray", 61).Length == 61, "Clip does not use the observed native61 muscle layout");
-        Validation.Require(clip.GetProperty("m_SampleRate").GetSingle() == samples.SampleRate && muscle.GetProperty("m_StartTime").GetDouble() == 0 && Math.Abs(muscle.GetProperty("m_StopTime").GetDouble() - (samples.Samples - 1) / (double)samples.SampleRate) <= 0.0001, "Unsupported native animation time interval");
+        Validation.Require(clip.GetProperty("m_SampleRate").GetSingle() == samples.SampleRate, "Native clip and decoded sample rates differ");
+        Duration = AuthoredInterval(muscle, samples.Samples, samples.SampleRate, out bool beyondGrid);
+        AuthoredEndBeyondGrid = beyondGrid;
         Validation.Require(clip.GetProperty("m_aclType").GetInt32() == 16 && buffer.GetProperty("Header").GetProperty("Version").GetInt32() == 10, "Unsupported Endfield animation encoding");
         Validation.Require(buffer.GetProperty("OutputTrackCount").GetInt32() == samples.Tracks && buffer.GetProperty("FloatCurveCount").GetInt32() == samples.Scalars, "Native binding and ACL track counts differ");
         Validation.Require(buffer.GetProperty("RootScaleIndex").GetInt32() == 65535, "Unsupported native root-scale binding mode");
@@ -132,6 +159,66 @@ public sealed class NativeAnimationBinding
         }
     }
 
+    /// <summary>
+    /// Binds a classic single-stream clip decoded by <see cref="NativeStreamedClipDecoder"/>. The decode is checked
+    /// against the clip's authored bindings, so no ACL header, mask or compressed byte is synthesized and no rest pose
+    /// is substituted. A single stream has no independent root buffer, so the ACL root-agreement check is not
+    /// applicable for this storage.
+    /// </summary>
+    public NativeAnimationBinding(JsonElement clip, NativeStreamedClipCurves curves)
+    {
+        Validation.Require(curves is not null && curves.Tracks is > 0 and <= 4096 && curves.Scalars is >= 14 and <= 4096
+            && curves.Samples is > 0 and <= 1_000_000 && float.IsFinite(curves.SampleRate) && curves.SampleRate > 0, "Unsupported animation sample layout");
+        long length = (curves!.Tracks * 10L + curves.Scalars) * curves.Samples;
+        Validation.Require(length <= 16 * 1024 * 1024 && curves.Values is not null && curves.Values.Length == length && curves.Values.All(float.IsFinite), "Invalid animation sample values");
+        var muscle = clip.GetProperty("m_MuscleClip");
+        Validation.Require(NativeHumanoidRig.ArrayField(muscle.GetProperty("m_DeltaPose"), "m_DoFArray", 61).Length == 61, "Clip does not use the observed native61 muscle layout");
+        // The classic streamed layout owns its own end rule (last key <= authored end, constant tail held by the
+        // zero end coefficient), so its interval relation is left exactly as verified for that storage.
+        Validation.Require(clip.GetProperty("m_SampleRate").GetSingle() == curves.SampleRate && muscle.GetProperty("m_StartTime").GetDouble() == 0
+            && Math.Abs(muscle.GetProperty("m_StopTime").GetDouble() - (curves.Samples - 1) / (double)curves.SampleRate) <= 0.0001, "Unsupported native animation time interval");
+        Duration = (curves.Samples - 1) / (double)curves.SampleRate;
+        AuthoredEndBeyondGrid = false;
+        var bindings = NativeHumanoidRig.ArrayField(clip.GetProperty("m_ClipBindingConstant"), "genericBindings", 16384);
+        scalarColumns = [];
+        var transform = new Dictionary<uint, (bool Position, bool Rotation, bool Scale)>();
+        var seen = new HashSet<(uint Path, uint Attribute)>();
+        foreach (var binding in bindings)
+        {
+            int type = binding.GetProperty("typeID").GetInt32(); uint attribute = binding.GetProperty("attribute").GetUInt32(); int custom = binding.GetProperty("customType").GetInt32();
+            Validation.Require(binding.GetProperty("isPPtrCurve").GetInt32() == 0, "Unsupported object animation binding");
+            if (type == 4)
+            {
+                Validation.Require(custom == 0 && attribute is 1 or 2 or 3, "Unsupported native transform curve binding");
+                uint path = binding.GetProperty("path").GetUInt32();
+                Validation.Require(seen.Add((path, attribute)), "Duplicate native transform curve binding");
+                transform.TryGetValue(path, out var channels);
+                transform[path] = (channels.Position || attribute == 1, channels.Rotation || attribute == 2, channels.Scale || attribute == 3);
+                continue;
+            }
+            Validation.Require(type == 95 && binding.GetProperty("path").GetUInt32() == 0 && custom == (attribute < 143 ? 8 : 0), "Unsupported classic Animator scalar binding kind");
+            // Muscle attributes identify the pose and must be unique. A repeated custom (>=143) attribute is only
+            // collapsed by the classic decoder when its authored curves are equal on every sample; no curve wins.
+            if (attribute < 143) Validation.Require(scalarColumns.TryAdd(attribute, scalarColumns.Count), "Duplicate native muscle attribute");
+            else if (!scalarColumns.ContainsKey(attribute)) scalarColumns[attribute] = scalarColumns.Count;
+        }
+        HasHumanoid = scalarColumns.Keys.Any(x => x >= 14 && x < 143);
+        Validation.Require(scalarColumns.Count == curves.Scalars && Enumerable.Range(0, HasHumanoid ? 143 : 14).All(x => scalarColumns.ContainsKey((uint)x)), "Required native scalar attributes are absent");
+        Validation.Require(transform.Count == curves.Tracks && transform.Keys.All(curves.TransformPaths.Contains), "Decoded classic tracks disagree with the authored transform bindings");
+        for (int track = 0; track < curves.Tracks; track++)
+        {
+            var channels = transform[curves.TransformPaths[track]];
+            Validation.Require(channels.Position == curves.PositionTracks[track] && channels.Rotation == curves.RotationTracks[track] && channels.Scale == curves.ScaleTracks[track],
+                "Decoded classic transform channels disagree with the authored bindings");
+        }
+        TransformPaths = Array.AsReadOnly(curves.TransformPaths);
+        PositionTracks = Array.AsReadOnly(curves.PositionTracks); RotationTracks = Array.AsReadOnly(curves.RotationTracks); ScaleTracks = Array.AsReadOnly(curves.ScaleTracks);
+        Samples = curves!.Samples; Scalars = curves.Scalars; SampleRate = curves.SampleRate; values = (float[])curves.Values!.Clone();
+        CustomScalarAttributes = Array.AsReadOnly(curves.ScalarAttributes.Where(x => x >= 143).ToArray());
+        StorageNotes = Array.AsReadOnly(curves.Notes);
+        NonAclSingleStream = true;
+    }
+
     public NativeHumanoidFrame HumanFrame(int sample)
     {
         Validation.Require(HasHumanoid,"Generic clip has no native body-muscle frame");
@@ -158,6 +245,17 @@ public sealed class NativeAnimationBinding
         if(RotationTracks[track])q=new(values[at],values[at+1],values[at+2],values[at+3]);
         if(ScaleTracks[track])scale=new(values[at+7],values[at+8],values[at+9]);
         NativeHumanoidRig.Rotation(q);return Matrix4x4.CreateScale(scale)*Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(q))*Matrix4x4.CreateTranslation(translation);
+    }
+    /// <summary>Exact decoded native generic channels of one track and sample before any imported rest basis is
+    /// applied. Used to preserve a track verbatim when its target identity does not exist in the imported rig.</summary>
+    public (Vector3 Translation,Quaternion Rotation,Vector3 Scale) RawTransform(int sample,int track)
+    {
+        Validation.Require(track>=0&&track<TransformPaths.Count,"Invalid native transform track");int at=Offset(sample)+track*10;
+        Vector3 translation=PositionTracks[track]?new(values[at+4],values[at+5],values[at+6]):Vector3.Zero;
+        Vector3 scale=ScaleTracks[track]?new(values[at+7],values[at+8],values[at+9]):Vector3.One;
+        Quaternion rotation=RotationTracks[track]?new(values[at],values[at+1],values[at+2],values[at+3]):Quaternion.Identity;
+        if(RotationTracks[track])NativeHumanoidRig.Rotation(rotation);
+        return (translation,rotation,scale);
     }
     private int Offset(int sample) { Validation.Require(sample >= 0 && sample < Samples, "Animation sample index is out of range"); return sample * (TransformPaths.Count * 10 + Scalars); }
 }

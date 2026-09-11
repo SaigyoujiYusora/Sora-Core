@@ -38,6 +38,37 @@ internal static class HumanoidTests
             }
             if (Math.Abs(Quaternion.Dot(npc[14], player[14])) > .999f) throw new Exception("Nonzero arm twist fixture did not exercise redistribution");
         });
+        test("native fractional twist splits the authored proximal twist and preserves the end rotation", () => {
+            var body = new float[61];
+            foreach (int channel in new[] { 21, 22, 23, 24, 25, 26, 27, 28, 43, 44, 45, 46, 47, 48, 49, 50, 51 })
+                body[channel] = channel % 2 == 0 ? -.37f : .61f;
+            var input = neutral with { BodyMuscles = body };
+            var full = NativeHumanoidPose.Evaluate(rig, input).Body.ToDictionary(x => x.HumanSlot, x => x.Rotation);
+            var zero = NativeHumanoidPose.Evaluate(Copy(rig, policy: Vector4.Zero), input).Body.ToDictionary(x => x.HumanSlot, x => x.Rotation);
+            var half = NativeHumanoidPose.Evaluate(Copy(rig, policy: new Vector4(.5f, .5f, .5f, .5f)), input).Body.ToDictionary(x => x.HumanSlot, x => x.Rotation);
+            int split = 0; double largest = 0;
+            foreach (var (upper, lower, end) in new[] { (1, 3, 5), (2, 4, 6), (14, 16, 18), (15, 17, 19) })
+            {
+                // The end-effector world chain rotation is identical under every twist weight.
+                Near(half[upper] * half[lower] * half[end], full[upper] * full[lower] * full[end]);
+                // Measure the authored proximal twist as a rotation angle instead of a dot threshold, so a
+                // small authored angle cannot make two different weights look equal.
+                static double Angle(Quaternion q)
+                {
+                    var v = new Vector3(q.X, q.Y, q.Z);
+                    return 2 * Math.Atan2(v.Length(), Math.Abs(q.W));
+                }
+                var authored = Quaternion.Normalize(Quaternion.Conjugate(zero[upper]) * full[upper]);
+                double authoredAngle = Angle(authored);
+                if (authoredAngle <= 1e-6) continue;
+                split++; largest = Math.Max(largest, authoredAngle);
+                var applied = Quaternion.Normalize(Quaternion.Conjugate(zero[upper]) * half[upper]);
+                double appliedAngle = Angle(applied);
+                if (Math.Abs(appliedAngle - authoredAngle / 2) > 1e-4)
+                    throw new Exception($"Fractional twist applied {appliedAngle} instead of half of {authoredAngle}");
+            }
+            if (split == 0 || largest <= 1e-3) throw new Exception("Fractional twist fixture did not exercise a measurable redistributed pair");
+        });
         test("native root removes full nonidentity motion frame", () => {
             var body = new float[61]; body[0] = .25f; body[43] = -.3f;
             var baseline = neutral with { BodyMuscles = body, RootTranslation = new(.2f, 1.2f, -.4f), RootRotation = Quaternion.CreateFromYawPitchRoll(.3f, .1f, -.2f) };
@@ -61,9 +92,11 @@ internal static class HumanoidTests
             var nodes = rig.Nodes.ToArray(); nodes[2] = nodes[2] with { PathHash = nodes[1].PathHash }; reject(() => Copy(rig, nodes: nodes));
             nodes = rig.Nodes.ToArray(); nodes[2] = nodes[2] with { Parent = 3 }; reject(() => Copy(rig, nodes: nodes));
             var slots = rig.HumanNodes.ToArray(); slots[5] = -1; reject(() => Copy(rig, slots: slots));
-            reject(() => Copy(rig, policy: new(1, .5f, 1, 0)));
-            foreach (var policy in new[] { new Vector4(0, 0, 1, 0), new Vector4(.5f, 0, .5f, 0), new Vector4(float.NaN, 0, 0, 0) })
+            foreach (var policy in new[] { new Vector4(-.01f, 0, 0, 0), new Vector4(1.01f, 0, 0, 0), new Vector4(float.NaN, 0, 0, 0), new Vector4(0, float.PositiveInfinity, 0, 0) })
                 reject(() => Copy(rig, policy: policy));
+            // Authored native twist weights are fractions in [0,1] and must be retained unchanged.
+            foreach (var policy in new[] { new Vector4(1, .5f, 1, 0), new Vector4(0, 0, 1, 0), new Vector4(.5f, 0, .5f, 0) })
+                if (Copy(rig, policy: policy).TwistPolicy != policy) throw new Exception("Authored fractional twist weights were not retained");
         });
         test("native rig snapshots identity and mass arrays", () => {
             var nodes = rig.Nodes.ToArray(); var masses = rig.Masses.ToArray(); var copied = Copy(rig, nodes: nodes, masses: masses); nodes[1] = nodes[1] with { Path = "changed" }; masses[0] = 0;

@@ -51,25 +51,33 @@ public static class NativeHumanoidPose
             Validation.Require(float.IsFinite(value), "Human muscle angle overflow");
             if (axis == 0) angles[bone].X = value; else if (axis == 1) angles[bone].Y = value; else angles[bone].Z = value; active[bone] = true;
         }
-        var raw = new Dictionary<int, Quaternion>(); var untwisted = new Dictionary<int, Quaternion>();
+        var raw = new Dictionary<int, Quaternion>();
         for (int bone = 0; bone < 25; bone++) if (active[bone])
         {
             var axis = rig.Axes[rig.Nodes[rig.HumanNodes[bone]].Axes]; var a = angles[bone];
             var swing = new Quaternion(0, MathF.Tan(a.Y / 2), MathF.Tan(a.Z / 2), 1); NativeHumanoidRig.Rotation(swing); swing = Quaternion.Normalize(swing);
             raw.Add(bone, Quaternion.Normalize(axis.Pre * swing * Quaternion.CreateFromAxisAngle(Vector3.UnitX, a.X) * Quaternion.Conjugate(axis.Post)));
-            untwisted.Add(bone, Quaternion.Normalize(axis.Pre * swing * Quaternion.Conjugate(axis.Post)));
         }
         var result = new Dictionary<int, Quaternion>(raw);
         // Distal pairs precede proximal pairs: the proximal residual acts on the
         // already redistributed child, preserving both authored twist channels.
+        // The authored twist of the proximal bone is split by its native weight: the proximal bone keeps
+        // weight*w and the distal bone receives the remainder in the proximal frame. weight 1 keeps raw and
+        // weight 0 reproduces the previous fully redistributed endpoint exactly.
+        Quaternion Split(int bone, float weight)
+        {
+            var axis = rig.Axes[rig.Nodes[rig.HumanNodes[bone]].Axes]; var a = angles[bone];
+            var swing = Quaternion.Normalize(new Quaternion(0, MathF.Tan(a.Y / 2), MathF.Tan(a.Z / 2), 1));
+            return Quaternion.Normalize(axis.Pre * swing * Quaternion.CreateFromAxisAngle(Vector3.UnitX, a.X * weight) * Quaternion.Conjugate(axis.Post));
+        }
         foreach (var (parent, child, weight) in new[] { (3, 5, rig.TwistPolicy.W), (4, 6, rig.TwistPolicy.W),
             (16, 18, rig.TwistPolicy.Y), (17, 19, rig.TwistPolicy.Y),
             (1, 3, rig.TwistPolicy.Z), (2, 4, rig.TwistPolicy.Z), (14, 16, rig.TwistPolicy.X), (15, 17, rig.TwistPolicy.X) })
         {
             if (weight == 1) continue;
-            // The rig admits only the independently verified endpoint policies.
-            result[parent] = untwisted[parent];
-            result[child] = Quaternion.Normalize(Quaternion.Conjugate(untwisted[parent]) * raw[parent] * result[child]);
+            var split = Split(parent, weight);
+            result[parent] = split;
+            result[child] = Quaternion.Normalize(Quaternion.Conjugate(split) * raw[parent] * result[child]);
         }
         return result;
     }

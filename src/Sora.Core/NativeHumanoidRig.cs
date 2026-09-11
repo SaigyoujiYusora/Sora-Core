@@ -25,7 +25,10 @@ public sealed class NativeHumanoidRig
     {
         Validation.Require(nodes is not null && nodes.Length is > 0 and <= 4096 && axes is not null && axes.Length <= 4096, "Unsupported or empty native human skeleton");
         Validation.Require(humanNodes is not null && humanNodes.Length == 25 && masses is not null && masses.Length == 25, "Expected native 25-slot human schema");
-        Validation.Require(twistPolicy == new Vector4(1, 0, 1, 0) || twistPolicy == Vector4.Zero, "Unsupported humanoid twist policy; expected arm/forearm/upper-leg/leg 1/0/1/0 or 0/0/0/0");
+        // Native twist values are per-limb weights in [0,1]: 1 keeps the authored twist on the proximal
+        // bone, 0 moves it entirely to the distal bone, and a fractional value splits it proportionally.
+        Validation.Require(twistPolicy.X is >= 0 and <= 1 && twistPolicy.Y is >= 0 and <= 1 && twistPolicy.Z is >= 0 and <= 1 && twistPolicy.W is >= 0 and <= 1,
+            $"Unsupported humanoid twist policy ({twistPolicy.X},{twistPolicy.Y},{twistPolicy.Z},{twistPolicy.W}); expected arm/forearm/upper-leg/leg weights within [0,1]");
         Validation.Require(float.IsFinite(humanScale) && humanScale > 0, "Invalid native human scale");
         var identities = new HashSet<uint>(); var paths = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < nodes!.Length; i++)

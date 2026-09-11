@@ -139,6 +139,14 @@ public sealed class GameResources
     }
 
     public string[] LogicalNames => files.Keys.Order(StringComparer.Ordinal).ToArray();
+    // Temporary compatibility helper for the reconstructed native prefab stage.
+    // The catalog stage replaces this file with the alias-aware implementation.
+    public AddressResource SelectAddress(string path, string? hash = null)
+    {
+        var matches = Manifest.Assets.Where(asset => asset.Path == path && (hash is null || asset.Hash.ToString("x16").Equals(hash, StringComparison.OrdinalIgnoreCase))).ToArray();
+        Validation.Require(matches.Length == 1, "Native resource address is absent or ambiguous: " + path);
+        return matches[0];
+    }
     public ResourceFileRecord LogicalSource(string name) { var source = GetSource(name); return new(Path.GetRelativePath(sourceRoot, source.Index).Replace('\\','/'), source.Resource); }
     public ResolvedAsset ResolveHash(long hash, int classId)
     {
