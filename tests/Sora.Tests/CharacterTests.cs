@@ -204,6 +204,31 @@ internal static class CharacterTests
             }), "test"));
             reject(() => CharacterGeometry.Convert(Fixture((a, m) => m["m_BoneNameHashes"]!["Array"]![1] = 999), "test"));
         });
+        test("native renderer matrix admits a mesh node absent from Avatar without inventing bones", () => {
+            var original=Fixture();
+            var extra=((JsonObject)original.Objects.Single(o=>o.ClassId==43).Data!).DeepClone().AsObject();
+            extra["m_Name"]="Extra_lod0";
+            extra["m_BindPose"]!["Array"]![0]!["e03"]=2;
+            extra["m_BindPose"]!["Array"]![1]!["e03"]=1;
+            var source=original with {Objects=[..original.Objects,new(3,43,extra)]};
+            reject(()=>CharacterGeometry.Convert(source,"missing-avatar-mesh-node"));
+            var transforms=new Dictionary<string,Matrix4x4>{["Body_lod0"]=Matrix4x4.CreateTranslation(1,2,3),["Extra_lod0"]=Matrix4x4.CreateTranslation(2,2,3)};
+            var scene=CharacterGeometry.Convert(source,"native-renderer-mesh-node",nativeMeshTransforms:transforms).Assets[0].Scene!;
+            Check(scene.Bones.Length==2&&scene.Meshes.Length==2,"Native renderer does not synthesize Avatar bones");
+            Near(scene.Meshes.Single(m=>m.Name=="Extra_lod0").Positions[0],-2,-3,2);
+            Check(scene.Meshes.All(m=>m.Weights.Length==6),"Authored skin influences remain present");
+            transforms.Remove("Extra_lod0");reject(()=>CharacterGeometry.Convert(source,"missing-native-renderer",nativeMeshTransforms:transforms));
+        });
+        test("large vertex decode observes a managed cancellation checkpoint",()=>{
+            var source=Fixture((avatar,mesh)=>{
+                var vertex=mesh["m_VertexData"]!;var original=Convert.FromBase64String(vertex["m_DataSize"]!.GetValue<string>());var bytes=new byte[5000*42];
+                for(int i=0;i<5000;i++)original.AsSpan(0,42).CopyTo(bytes.AsSpan(i*42,42));
+                vertex["m_VertexCount"]=5000;vertex["m_DataSize"]=Convert.ToBase64String(bytes);
+            });
+            bool cancelled=false;OperationProgress.Sink=update=>{if(update.Stage=="decode-mesh-vertices"&&update.Completed>=4096)throw new OperationCanceledException();};
+            try{CharacterGeometry.Convert(source,"cancel-vertices");}catch(OperationCanceledException){cancelled=true;}finally{OperationProgress.Sink=null;}
+            Check(cancelled,"Cancellation must occur before the whole mesh finishes");
+        });
         test("octahedral signed ten-bit canonical directions", () => {
             (int x, int y, Vector3 direction)[] cases = [(0, 0, Vector3.UnitZ), (511, 0, Vector3.UnitX), (-511, 0, -Vector3.UnitX), (0, 511, Vector3.UnitY), (0, -511, -Vector3.UnitY), (511, 511, -Vector3.UnitZ)];
             foreach (var c in cases) {

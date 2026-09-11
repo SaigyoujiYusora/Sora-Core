@@ -25,7 +25,7 @@ public static class CharacterGeometry
         return Matrix4x4.CreateScale(Vector(value.GetProperty("s"))) * Matrix4x4.CreateFromQuaternion(quaternion) * Matrix4x4.CreateTranslation(Vector(value.GetProperty("t")));
     }
 
-    public static DatabaseDocument Convert(SerializedDocument source, string identity, int lod = 0, bool allowEmptyMeshes = false, bool allowAuxiliaryScale = false)
+    public static DatabaseDocument Convert(SerializedDocument source, string identity, int lod = 0, bool allowEmptyMeshes = false, bool allowAuxiliaryScale = false, IReadOnlyDictionary<string, Matrix4x4>? nativeMeshTransforms = null)
     {
         Validation.Require(lod >= 0 && lod <= 3, "LOD must be between zero and three");
         var avatars = source.Objects.Where(x => x.ClassId == 90).Take(2).ToArray();
@@ -48,13 +48,32 @@ public static class CharacterGeometry
         var selected = source.Objects.Where(x => x.ClassId == 43).Select(x => (x.Id, Mesh: JsonSerializer.SerializeToElement(x.Data, WireJson.Options)))
             .Where(x => x.Mesh.GetProperty("m_Name").GetString()!.EndsWith("_lod" + lod, StringComparison.OrdinalIgnoreCase)).Take(4097).ToArray();
         Validation.Require((selected.Length > 0 || allowEmptyMeshes) && selected.Length <= 4096, "Selected mesh count is empty or exceeds limit");
+        Matrix4x4? nativeAlignment = null;
+        if(nativeMeshTransforms is not null) {
+            foreach(var entry in selected) {
+                string name=entry.Mesh.GetProperty("m_Name").GetString()!;
+                Validation.Require(nativeMeshTransforms.ContainsKey(name),"Missing explicit native renderer transform: "+name);
+                var owners=Enumerable.Range(0,nodes.Length).Where(i=>paths.GetValueOrDefault(pathHashes[i],"").Split('/')[^1]==name).ToArray();
+                if(owners.Length==0)continue;
+                Validation.Require(owners.Length==1&&Matrix4x4.Invert(nativeMeshTransforms[name],out _),"Ambiguous native renderer alignment");
+                Matrix4x4.Invert(nativeMeshTransforms[name],out var inverseNative);
+                var alignment=inverseNative*world[owners[0]];
+                if(nativeAlignment is {} previous)Validation.Require(MatrixValues(alignment).Zip(MatrixValues(previous),(a,b)=>Math.Abs(a-b)).Max()<0.001,"Native prefab and Avatar mesh coordinate spaces disagree");
+                else nativeAlignment=alignment;
+            }
+            Validation.Require(nativeAlignment.HasValue,"No native renderer can be aligned to the Avatar");
+        }
+        Matrix4x4 MeshWorld(string name) {
+            if(nativeMeshTransforms is not null)return nativeMeshTransforms[name]*nativeAlignment!.Value;
+            var owners=Enumerable.Range(0,nodes.Length).Where(i=>paths.GetValueOrDefault(pathHashes[i],"").Split('/')[^1]==name).ToArray();
+            Validation.Require(owners.Length==1,"Mesh transform is absent or ambiguous: "+name);return world[owners[0]];
+        }
         var anchors = new Dictionary<int, Matrix4x4>();
         foreach (var entry in selected)
         {
             var mesh = entry.Mesh;
             string name = mesh.GetProperty("m_Name").GetString()!;
-            var owners = Enumerable.Range(0, nodes.Length).Where(i => paths.GetValueOrDefault(pathHashes[i], "").Split('/')[^1] == name).ToArray();
-            Validation.Require(owners.Length == 1, "Mesh transform is absent or ambiguous");
+            var meshWorld=MeshWorld(name);
             var palette = BoundedArray(mesh, "m_BoneNameHashes", 4096).EnumerateArray().ToArray();
             var binds = BoundedArray(mesh, "m_BindPose", 4096).EnumerateArray().ToArray();
             Validation.Require(palette.Length == binds.Length, "Bind palette and bone hashes disagree");
@@ -63,7 +82,7 @@ public static class CharacterGeometry
                 var joints = Enumerable.Range(0, nodes.Length).Where(j => pathHashes[j] == palette[i].GetUInt32()).ToArray();
                 Validation.Require(joints.Length == 1, "Mesh bone hash is absent or ambiguous");
                 Validation.Require(Matrix4x4.Invert(Bind(binds[i]), out var inverseBind), "Singular mesh bind matrix");
-                var candidate = inverseBind * world[owners[0]];
+                var candidate = inverseBind * meshWorld;
                 if (anchors.TryGetValue(joints[0], out var previous))
                     Validation.Require(MatrixValues(candidate).Zip(MatrixValues(previous), (x,y) => Math.Abs(x-y)).Max() < 0.001, "Meshes disagree about a shared bone bind basis");
                 else anchors.Add(joints[0], candidate);
@@ -94,20 +113,36 @@ public static class CharacterGeometry
             var normalizedRest = Matrix4x4.CreateFromQuaternion(Quaternion.Normalize(rotation)) * Matrix4x4.CreateTranslation(head);
             bones[i] = new(name, parent, Values(head), Values(head + axis * 0.05f), roll, MatrixValues(normalizedRest), SourcePath: path, SourceHash: pathHashes[i]);
         }
+        Validation.Require(selected.Sum(entry => (long)entry.Mesh.GetProperty("m_VertexData").GetProperty("m_VertexCount").GetInt32()) <= 5_000_000, "Scene vertex limit exceeded");
+        Validation.Require(selected.Sum(entry => Array(entry.Mesh,"m_SubMeshes").EnumerateArray().Sum(sub => (long)sub.GetProperty("indexCount").GetInt32()/3)) <= 10_000_000, "Scene triangle limit exceeded");
         var meshes = new List<MeshRecord>();
-        long totalVertices = 0, totalTriangles = 0;
         foreach (var entry in selected)
         {
             var mesh = entry.Mesh;
             string name = mesh.GetProperty("m_Name").GetString()!;
-            var meshNode = Enumerable.Range(0, nodes.Length).Where(i => paths.GetValueOrDefault(pathHashes[i], "").Split('/')[^1] == name).ToArray();
-            Validation.Require(meshNode.Length == 1, "Mesh transform is missing or ambiguous: " + name);
-            var transform = world[meshNode[0]] * space;
+            var transform = MeshWorld(name) * space;
+            meshes.Add(DecodeMesh(mesh, identity, entry.Id, transform, pathHashes, true));
+        }
+        HeadReferenceRecord? headReference = null;
+        var heads = Enumerable.Range(0, bones.Length).Where(i => bones[i].SourcePath!.Split('/')[^1] == "Bip001_Head").Take(2).ToArray();
+        if (heads.Length == 1)
+        {
+            var head = bones[heads[0]];
+            headReference = new(heads[0], head.Name, head.SourcePath!, head.RestMatrix!, "native-head-axes-unverified");
+        }
+        var scene = new SceneDocument(avatar.GetProperty("m_Name").GetString()!, bones, meshes.ToArray(), [], [], HeadReference: headReference);
+        var database = new DatabaseDocument(source.UnityVersion, [new(identity, scene.Name, "Native geometry; materials and animation are not included", "character", [], scene)]);
+        Validation.Database(database); return database;
+    }
+
+    internal static MeshRecord DecodeMesh(JsonElement mesh, string identity, long nativeId, Matrix4x4 transform, uint[] pathHashes, bool skinned)
+    {
+        string name = mesh.GetProperty("m_Name").GetString()!;
             Validation.Require(Matrix4x4.Invert(transform, out var inverse), "Singular mesh transform");
             var normalTransform = Matrix4x4.Transpose(inverse);
             var vertex = mesh.GetProperty("m_VertexData");
             int count = vertex.GetProperty("m_VertexCount").GetInt32();
-            totalVertices += count;
+            long totalVertices = count;
             Validation.Require(count >= 0 && totalVertices <= 5_000_000, "Mesh vertex limit exceeded");
             var channels = BoundedArray(vertex, "m_Channels", 32).EnumerateArray().ToArray();
             Validation.Require(channels.Length >= 14, "Mesh vertex channel layout is incomplete");
@@ -171,11 +206,12 @@ public static class CharacterGeometry
                 var candidates = Enumerable.Range(0, pathHashes.Length).Where(i => pathHashes[i] == hash).ToArray();
                 Validation.Require(candidates.Length == 1, "Mesh bone hash is absent or ambiguous"); return candidates[0];
             }).ToArray();
-            int influences = mesh.GetProperty("m_BonesPerVertex").GetInt32();
-            Validation.Require(influences is 1 or 2 or 4, "Variable bone influences are not yet supported");
+            int influences = skinned ? mesh.GetProperty("m_BonesPerVertex").GetInt32() : 0;
+            Validation.Require(influences is 1 or 2 or 4 || !skinned, "Variable bone influences are not yet supported");
             var weights = new List<WeightRecord>();
             for (int vertexIndex = 0; vertexIndex < count; vertexIndex++)
             {
+                if(vertexIndex%4096==0)OperationProgress.Report("decode-mesh-vertices",vertexIndex,count,name);
                 positions[vertexIndex] = Values(Vector3.Transform(new((float)Scalar(0, vertexIndex, 0), (float)Scalar(0, vertexIndex, 1), (float)Scalar(0, vertexIndex, 2)), transform));
                 int normalDimension = channels[1].GetProperty("dimension").GetInt32();
                 Vector3 normal;
@@ -210,7 +246,7 @@ public static class CharacterGeometry
                     Validation.Require(localBone >= 0 && localBone < joints.Length, "Skin index outside mesh bind palette");
                     int joint = joints[localBone]; vertexWeights[joint] = vertexWeights.GetValueOrDefault(joint) + weight;
                 }
-                double sum = vertexWeights.Values.Sum(); Validation.Require(double.IsFinite(sum) && sum > 0, "Vertex has no valid skin influence");
+                double sum = vertexWeights.Values.Sum(); Validation.Require(!skinned || double.IsFinite(sum) && sum > 0, "Vertex has no valid skin influence");
                 foreach (var weight in vertexWeights) weights.Add(new(vertexIndex, weight.Key, weight.Value / sum));
             }
             byte[] indices = Array(mesh, "m_IndexBuffer").GetBytesFromBase64();
@@ -218,7 +254,7 @@ public static class CharacterGeometry
             Validation.Require(indexFormat is 0 or 1, "Unsupported mesh index format");
             int indexWidth = indexFormat == 0 ? 2 : 4;
             var triangles = new List<int[]>();
-            var triangleSlots = new List<int>(); int slot = 0;
+            var triangleSlots = new List<int>(); int slot = 0; long totalTriangles = 0;
             foreach (var submesh in BoundedArray(mesh, "m_SubMeshes", 4096).EnumerateArray())
             {
                 Validation.Require(submesh.GetProperty("topology").GetInt32() == 0, "Only triangle submeshes are supported");
@@ -228,6 +264,7 @@ public static class CharacterGeometry
                 Validation.Require(totalTriangles <= 10_000_000, "Scene triangle limit exceeded");
                 for (int triangle = 0; triangle < indexCount; triangle += 3)
                 {
+                    if(triangle%24576==0)OperationProgress.Report("decode-mesh-triangles",triangle/3,indexCount/3,name);
                     int[] corners = new int[3];
                     for (int corner = 0; corner < 3; corner++) {
                         var span = indices.AsSpan(start + (triangle + corner) * indexWidth);
@@ -239,19 +276,8 @@ public static class CharacterGeometry
                 slot++;
             }
             Validation.Require(slot > 0, "Mesh has no submeshes");
-            meshes.Add(new(name, positions, triangles.ToArray(), normals, uv, -1, weights.ToArray(), [], Enumerable.Repeat(-1, slot).ToArray(), triangleSlots.ToArray(), slot,
-                UvSets: uvSets, Tangents: tangents, Colors: colors, SourceId: identity + ":" + entry.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        }
-        HeadReferenceRecord? headReference = null;
-        var heads = Enumerable.Range(0, bones.Length).Where(i => bones[i].SourcePath!.Split('/')[^1] == "Bip001_Head").Take(2).ToArray();
-        if (heads.Length == 1)
-        {
-            var head = bones[heads[0]];
-            headReference = new(heads[0], head.Name, head.SourcePath!, head.RestMatrix!, "native-head-axes-unverified");
-        }
-        var scene = new SceneDocument(avatar.GetProperty("m_Name").GetString()!, bones, meshes.ToArray(), [], [], HeadReference: headReference);
-        var database = new DatabaseDocument(source.UnityVersion, [new(identity, scene.Name, "Native geometry; materials and animation are not included", "character", [], scene)]);
-        Validation.Database(database); return database;
+            return new(name, positions, triangles.ToArray(), normals, uv, -1, weights.ToArray(), [], Enumerable.Repeat(-1, slot).ToArray(), triangleSlots.ToArray(), slot,
+                UvSets: uvSets, Tangents: tangents, Colors: colors, SourceId: identity + ":" + nativeId.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     public static Vector3 Octahedral(uint packed)

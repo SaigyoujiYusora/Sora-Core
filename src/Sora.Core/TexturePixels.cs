@@ -42,7 +42,10 @@ public static class TexturePixels
             throw new InvalidDataException("Native texture decoding failed.");
         // color.h packs little-endian BGRA; the public contract is RGBA.
         for (int i = 0; i < rgba.Length; i += 4)
+        {
+            if(i%262144==0)OperationProgress.Report("convert-texture-pixels",i/4,pixels);
             (rgba[i], rgba[i + 2]) = (rgba[i + 2], rgba[i]);
+        }
         return rgba;
     }
 
@@ -93,6 +96,7 @@ public static class TexturePixels
             int stride = width * 4;
             for (int y = 0; y < height; y++)
             {
+                if(y%64==0)OperationProgress.Report("encode-texture-rows",y,height);
                 zlib.WriteByte(0);
                 zlib.Write(rgba, (flipY ? height - 1 - y : y) * stride, stride);
             }
@@ -118,7 +122,7 @@ public static class TexturePixels
         output.Write(name); output.Write(data);
         uint crc = uint.MaxValue;
         foreach (byte value in name) crc = CrcByte(crc, value);
-        foreach (byte value in data) crc = CrcByte(crc, value);
+        for(int i=0;i<data.Length;i++) { if(i%65536==0)OperationProgress.Report("encode-texture-checksum",i,data.Length,type); crc=CrcByte(crc,data[i]); }
         BinaryPrimitives.WriteUInt32BigEndian(word, ~crc);
         output.Write(word);
     }
