@@ -15,10 +15,32 @@ public static class Validation
     {
         if (database.ResourceIndex is not null) ResourceIndex(database.ResourceIndex);
         Name(database.GameVersion);
+        if (database.CatalogSource is {} source) {
+            Name(source.ManifestHash); Name(source.Coverage);
+            Require(source.MetadataStatus is "not-loaded" or "missing-table-source" or "native-tables-cn", "Unknown catalog metadata state");
+            if(source.MetadataFiles is {} metadataFiles) {
+                Require(metadataFiles.Length<=16,"Metadata source limit exceeded");
+                ResourceIndex(new("catalog-metadata",source.ManifestHash,source.ManifestRevision,metadataFiles,[]));
+            }
+            if(source.MetadataSources is {} states) {
+                Require(states.Length==NativeCatalogMetadata.SourcePaths.Length&&states.All(state=>state is not null),"Invalid metadata source inventory");
+                Require(states.Select(state=>state.Path).ToHashSet(StringComparer.Ordinal).SetEquals(NativeCatalogMetadata.SourcePaths),"Metadata source inventory is incomplete or duplicated");
+                foreach(var state in states) {
+                    Require(!state.Available||state.Source is not null,"Available metadata has no native source locator");
+                    if(state.Source is {} file) ResourceIndex(new("catalog-metadata",source.ManifestHash,source.ManifestRevision,[file],[]));
+                }
+                Require(source.MetadataStatus!="native-tables-cn"||states.All(state=>state.Available),"Complete metadata status contains missing sources");
+            }
+            else Require(source.MetadataStatus!="native-tables-cn"||source.MetadataFiles is {Length:4},"Legacy complete metadata inventory is missing sources");
+            Require(source.AliasPolicy=="lowest-available-bundle-index","Unsupported catalog alias policy");
+            Require(source.ManifestRevision is not null && source.ManifestRevision.Length <= 4096 && source.AddressCount >= 0 && source.BundleCount >= 0, "Invalid catalog source");
+        }
         Require(database.Assets is not null && database.Assets.Length <= 1_000_000, "Invalid asset collection");
         var identities = new HashSet<string>(StringComparer.Ordinal);
+        int validatedAssets = 0;
         foreach (var asset in database.Assets!)
         {
+            if (validatedAssets % 256 == 0) OperationProgress.Report("validate-database-assets", validatedAssets, database.Assets.Length);
             Require(asset is not null, "Null asset");
             Name(asset!.Id); Name(asset.Label); Name(asset.Kind);
             Require(asset.Detail is not null && asset.Detail.Length <= 16384, "Invalid asset detail");
@@ -26,8 +48,28 @@ public static class Validation
             Require(asset.Dependencies is not null && asset.Dependencies.Length <= 1_000_000, "Invalid dependencies");
             var edges = new HashSet<string>(StringComparer.Ordinal);
             foreach (var dependency in asset.Dependencies!) { Name(dependency); Require(edges.Add(dependency), "Duplicate dependency"); }
+            if (asset.Metadata is {} metadata) {
+                Name(metadata.InternalName); Name(metadata.SourceTable); Name(metadata.RowId);
+                if(metadata.DisplayNameZh is not null) Name(metadata.DisplayNameZh);
+                if(metadata.DisplayNameEn is not null) Name(metadata.DisplayNameEn);
+                Require(ulong.TryParse(metadata.NameTextId,out _) && metadata.LocalizationStatus is "native-cn" or "missing-translation" or "missing-source" or "missing-row" or "not-mapped", "Invalid localized metadata");
+                Require(metadata.LocalizationStatus != "native-cn" || metadata.DisplayNameZh is not null,"Localized status lacks native text");
+                if(metadata.DefaultWeaponId is not null) Name(metadata.DefaultWeaponId);
+                Require(metadata.WeaponType is null || metadata.WeaponType is >= 0 and <= 100,"Invalid native weapon type");
+                if(metadata.LocalizationDetail is not null) Name(metadata.LocalizationDetail);
+            }
+            if (asset.Locator is {} locator) {
+                Name(locator.Path); Name(locator.Parser);
+                Require(locator.Parser is "character" or "npc" or "item" or "unsupported", "Unknown asset parser");
+                Require(locator.MetadataStatus == "unparsed" && (locator.Bundle is null || locator.Bundle >= 0), "Invalid locator metadata");
+                Require(!Path.IsPathRooted(locator.Path) && !locator.Path.Replace('\\', '/').Split('/').Any(x => x is "." or ".."), "Locator must be relative to game resources");
+                if(locator.BundleCandidates is {} candidates) Require(candidates.Length is > 1 and <= 4096&&candidates.Distinct().Count()==candidates.Length&&candidates.All(bundle=>bundle>=0)&&locator.Bundle.HasValue&&candidates.Contains(locator.Bundle.Value),"Invalid alias candidates");
+                if(locator.Source is {} nativeSource) ResourceIndex(new("asset-source",database.CatalogSource?.ManifestHash??"standalone","",[nativeSource],[]));
+            }
             if (asset.Scene is not null) Scene(asset.Scene);
+            validatedAssets++;
         }
+        OperationProgress.Report("validate-database-assets", validatedAssets, database.Assets!.Length);
     }
 
     public static void ResourceIndex(EndfieldResourceIndex index)
@@ -89,8 +131,20 @@ public static class Validation
     public static void Scene(SceneDocument scene)
     {
         Name(scene.Name);
+        if(scene.ImportDiagnostics is {} diagnostics) { Require(diagnostics.Length<=256,"Import diagnostic limit exceeded");foreach(string diagnostic in diagnostics)Name(diagnostic); }
         Require(scene.Bones is not null && scene.Meshes is not null && scene.Materials is not null && scene.Clips is not null, "Missing scene collections");
         Require(scene.Bones!.Length <= 4096 && scene.Meshes!.Length <= 4096 && scene.Materials!.Length <= 4096 && scene.Clips!.Length <= 16384, "Scene collection limit exceeded");
+        if (scene.Nodes is {} nodes) {
+            Require(nodes.Length <= 4096, "Scene node limit exceeded");
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < nodes.Length; i++) {
+                var node = nodes[i]; Require(node is not null, "Null scene node");
+                Name(node!.Id); Name(node.Name); Name(node.SourcePath);
+                Require(ids.Add(node.Id) && node.Parent >= -1 && node.Parent < i, "Duplicate or unordered scene node");
+                Vector(node.LocalMatrix, 16);
+                Require(Math.Abs(node.LocalMatrix[12]) < 1e-6 && Math.Abs(node.LocalMatrix[13]) < 1e-6 && Math.Abs(node.LocalMatrix[14]) < 1e-6 && Math.Abs(node.LocalMatrix[15] - 1) < 1e-6, "Invalid affine node matrix");
+            }
+        }
         long totalVertices = 0, totalTriangles = 0, totalKeys = 0;
         var names = new HashSet<string>(StringComparer.Ordinal);
         for (var index = 0; index < scene.Bones!.Length; index++)
@@ -165,6 +219,8 @@ public static class Validation
         foreach (var mesh in scene.Meshes!)
         {
             Require(mesh is not null, "Null mesh"); Name(mesh!.Name); Require(names.Add(mesh.Name), "Duplicate mesh name");
+            Require(mesh.Node is null && mesh.CoordinateSpace is null || scene.Nodes is not null && mesh.Node >= 0 && mesh.Node < scene.Nodes.Length && mesh.CoordinateSpace is "node" or "scene", "Invalid mesh node coordinate contract");
+            Require(mesh.CoordinateSpace != "node" || mesh.Weights is { Length: 0 }, "Skinned meshes must use scene coordinates");
             Require(mesh.Positions is not null && mesh.Triangles is not null && mesh.Normals is not null && mesh.Uv is not null && mesh.Weights is not null && mesh.Shapes is not null, "Missing mesh collections");
             totalVertices += mesh.Positions!.Length; totalTriangles += mesh.Triangles!.Length;
             Require(totalVertices <= 5_000_000 && totalTriangles <= 10_000_000 && mesh.Weights!.Length <= 20_000_000 && mesh.Shapes!.Length <= 512, "Mesh collection limit exceeded");
@@ -243,6 +299,25 @@ public static class Validation
         Require(metadata.Diagnostics is not null&&metadata.Diagnostics.Length<=4096,"Invalid native animation diagnostics");
         foreach(string diagnostic in metadata.Diagnostics!)Name(diagnostic);
         var identities=new HashSet<(uint,int,int,uint)>();long count=0;
+        if(metadata.UnboundTransformTracks is {} unbound)
+        {
+            Require(unbound.Length is >0 and <=4096,"Invalid unbound native transform collection");var sourceTracks=new HashSet<int>();
+            foreach(var track in unbound)
+            {
+                Require(track is not null,"Null unbound native transform track");
+                Require(sourceTracks.Add(track!.SourceTrack)&&track.SourceTrack>=0,"Duplicate or negative unbound native source track");
+                Require(track.Position||track.Rotation||track.Scale,"Unbound native transform track has no authored channel");
+                Require(track.Times is not null&&track.Times.Length is >0 and <=1_000_000,"Invalid unbound native sample count");
+                for(int sample=0;sample<track.Times!.Length;sample++)Require(Math.Abs(track.Times[sample]-sample/(double)clip.Fps)<=0.000001,"Unbound native sample times must follow the native frame grid");
+                Require(track.Times[^1]<=clip.Duration+0.0001&&track.Times[^1]>=clip.Duration-1.0/clip.Fps-0.0001,"Unbound native samples do not span the clip interval");
+                foreach(var channels in new[]{(Values:track.Translations,Size:3,Authored:track.Position),(Values:track.Rotations,Size:4,Authored:track.Rotation),(Values:track.Scales,Size:3,Authored:track.Scale)})
+                {
+                    Require(channels.Values is not null&&channels.Values.Length==(channels.Authored?track.Times.Length:0),"Unbound native channel does not match the sample count");
+                    foreach(var row in channels.Values!){Require(row is not null&&row.Length==channels.Size,"Invalid unbound native channel row");Vector(row,channels.Size);}
+                }
+                count+=track.Times.Length;Require(count<=10_000_000,"Native sample limit exceeded");
+            }
+        }
         foreach(var track in metadata.CustomScalars!)
         {
             Require(track is not null,"Null native custom scalar track");
@@ -251,7 +326,20 @@ public static class Validation
             Require(float.IsFinite(track.SampleRate)&&track.SampleRate>=1&&track.SampleRate<=240&&Math.Abs(track.SampleRate-clip.Fps)<=0.000001,"Native scalar sample rate differs from clip");
             Require(track.Values is not null&&track.Values.Length is >0 and <=1_000_000,"Invalid native scalar sample count");
             Require(track.Values!.All(float.IsFinite),"Nonfinite native scalar sample");
-            Require(Math.Abs((track.Values!.Length-1)/(double)track.SampleRate-clip.Duration)<=0.000001,"Native scalar samples do not span the clip interval");
+            // Custom scalars share the decoded frame grid, so their sample count must equal the decoded body
+            // sample count and the authored end must stay inside the supported window: the clip end may sit
+            // just below the grid or up to one sample interval past it (walk loop 65 samples at 60 Hz,
+            // grid 1.0666667 s, authored 1.0709809 s, tail 0.004314 s). The authored end is never truncated
+            // to the grid and no sample is fabricated. A clip with no decoded body samples keeps the strict
+            // grid == authored interval rule because nothing establishes a sub-sample tail.
+            int decodedSamples=clip.Tracks.Length==0?0:clip.Tracks.Max(track=>track.Keys.Length);
+            double grid=(track.Values!.Length-1)/(double)track.SampleRate;
+            if(decodedSamples>0)
+            {
+                Require(track.Values!.Length==decodedSamples,"Native scalar samples do not match the decoded body samples");
+                Require(clip.Duration-grid>=-0.0001&&clip.Duration-grid<=1.0/track.SampleRate+0.0001,"Native scalar samples do not span the clip interval");
+            }
+            else Require(Math.Abs(grid-clip.Duration)<=0.000001,"Native scalar samples do not span the clip interval");
             count+=track.Values!.Length;Require(count<=10_000_000,"Native scalar sample limit exceeded");
         }
         return count;
@@ -271,6 +359,11 @@ public static class Validation
         Require(npr.Source.ResolutionStatus is not ("null" or "missing") || (npr.Source.ShaderId is null && npr.Source.ShaderName is null),"Unresolved shader has resolved provenance");
         Require(npr.Source.ResolutionStatus is not ("resolved" or "unsupported") || npr.Source.ShaderId is not null,"Missing resolved shader identity");
         Require(npr.Part is "Standard" or "Face" or "Eyes" or "Hair" or "Fur" or "Eyebrow" or "VFX" or "OverlayShadow" or "LiquidAg" or "Unknown","Invalid NPR part");
+        if(npr.Classification is {} classification) {
+            Require(classification.Category is "Standard" or "Face" or "Eyes" or "Hair" or "Fur" or "Eyebrow" or "VFX" or "OverlayShadow" or "LiquidAg" or "unclassified","Invalid material classification category");
+            Name(classification.Rule); Name(classification.Source);
+            Require(classification.Confidence is "inferred" or "unknown","Invalid material classification confidence");
+        }
         Require(npr.PartEvidence is not null,"Missing part evidence"); if(npr.PartEvidence!.ShaderName is not null) Name(npr.PartEvidence.ShaderName); if(npr.PartEvidence.Discriminator is not null) Name(npr.PartEvidence.Discriminator); Require(npr.PartEvidence.Value is null || double.IsFinite(npr.PartEvidence.Value.Value),"Invalid discriminator");
         Map(npr.Floats); Require(npr.Floats.Values.All(double.IsFinite),"Nonfinite NPR float"); Map(npr.Ints); Map(npr.Colors); foreach(var c in npr.Colors.Values) Vector(c,4);
         Map(npr.Textures); foreach(var binding in npr.Textures.Values) {

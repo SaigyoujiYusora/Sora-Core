@@ -5,7 +5,8 @@ namespace Sora.Core;
 
 public sealed record NativeAnimationScalarTrack(uint Path, int TypeId, int CustomType, uint Attribute, float SampleRate, float[] Values);
 public sealed record NativeAnimationSource(string ResourcePath, string Cab, string PathId, string ManifestHash);
-public sealed record NativeAnimationMetadata(NativeAnimationSource? Source, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics);
+public sealed record NativeUnboundTransformTrack(int SourceTrack, uint Path, bool Position, bool Rotation, bool Scale, double[] Times, double[][] Translations, double[][] Rotations, double[][] Scales);
+public sealed record NativeAnimationMetadata(NativeAnimationSource? Source, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics, NativeUnboundTransformTrack[]? UnboundTransformTracks = null);
 public sealed record NativeAnimationConversion(ClipRecord Clip, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics, NativeAnimationSource? Source = null);
 public sealed record NativeAnimationSelection(string Cab, string PathId);
 public sealed record NativeAnimationSubclip(string ResourcePath, string Cab, string PathId, string Name);

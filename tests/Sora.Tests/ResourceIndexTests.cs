@@ -12,11 +12,19 @@ internal static class ResourceIndexTests
         var index = new EndfieldResourceIndex("F:/game/Endfield_Data", "manifest-hash", "revision", [file],
             [decoded, new("CAB-b", "decoded", 0, new("CAB-b", 46, 12), [], [28], ["CAB-a"]), new("CAB-missing", "unresolved", null, null, null, null, null)]);
         var database = new DatabaseDocument("test", [], index);
-        test("SRED v2 resource index roundtrip retains source and phantom relationships", () => {
+        test("SRED current resource index roundtrip retains source and phantom relationships", () => {
             using var stream = new MemoryStream(); DatabaseFile.Write(stream, database);
-            if (BinaryPrimitives.ReadUInt32LittleEndian(stream.ToArray().AsSpan(8)) != 2) throw new Exception();
+            if (BinaryPrimitives.ReadUInt32LittleEndian(stream.ToArray().AsSpan(8)) != DatabaseFile.CurrentVersion) throw new Exception();
             stream.Position = 0; var restored = DatabaseFile.Read(stream);
             if (JsonSerializer.Serialize(restored, WireJson.Options) != JsonSerializer.Serialize(database, WireJson.Options)) throw new Exception();
+        });
+        test("SRED v2 remains readable and rejects v3 catalog metadata", () => {
+            var payload = JsonSerializer.SerializeToUtf8Bytes(database, WireJson.Options);
+            if (DatabaseFile.Read(new MemoryStream(Envelope(payload, 2))).ResourceIndex is null) throw new Exception();
+            var unified = database with { CatalogSource = new("hash", "", "complete-manifest-addresses-and-npc-declarations", 0, 0) };
+            reject(() => DatabaseFile.Read(new MemoryStream(Envelope(JsonSerializer.SerializeToUtf8Bytes(unified, WireJson.Options), 2))));
+            using var stream = new MemoryStream(); DatabaseFile.Write(stream, unified); stream.Position = 0;
+            if (DatabaseFile.Read(stream).CatalogSource != unified.CatalogSource) throw new Exception();
         });
         test("SRED historical v1 envelope reads without invented resource index", () => {
             byte[] payload = "{\"gameVersion\":\"legacy\",\"assets\":[{\"id\":\"a\",\"label\":\"A\",\"detail\":\"\",\"kind\":\"bundle\",\"dependencies\":[]}]}"u8.ToArray();

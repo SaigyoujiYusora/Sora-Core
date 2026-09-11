@@ -3,11 +3,12 @@ using System.Text.Json.Serialization;
 
 namespace Sora.Core;
 
-public sealed record DatabaseDocument(string GameVersion, AssetRecord[] Assets, EndfieldResourceIndex? ResourceIndex = null);
+public sealed record DatabaseDocument(string GameVersion, AssetRecord[] Assets, EndfieldResourceIndex? ResourceIndex = null, GameCatalogSource? CatalogSource = null);
 public sealed record AssetRecord(string Id, string Label, string Detail, string Kind,
-    string[] Dependencies, SceneDocument? Scene = null);
+    string[] Dependencies, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SceneDocument? Scene = null, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] AssetLocator? Locator = null, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] CatalogAssetMetadata? Metadata = null);
 public sealed record SceneDocument(string Name, BoneRecord[] Bones, MeshRecord[] Meshes,
-    MaterialRecord[] Materials, ClipRecord[] Clips, TextureRecord[]? Textures = null, TextureDescriptor[]? TextureDescriptors = null, HeadReferenceRecord? HeadReference = null, FaceDriverRecord? FaceDriver = null, NativeNpcProvenance? Npc = null);
+    MaterialRecord[] Materials, ClipRecord[] Clips, TextureRecord[]? Textures = null, TextureDescriptor[]? TextureDescriptors = null, HeadReferenceRecord? HeadReference = null, FaceDriverRecord? FaceDriver = null, NativeNpcProvenance? Npc = null, SceneNodeRecord[]? Nodes = null, string[]? ImportDiagnostics = null);
+public sealed record SceneNodeRecord(string Id, string Name, int Parent, string SourcePath, double[] LocalMatrix);
 public sealed record HeadReferenceRecord(int Bone, string Name, string NativePath, double[] RestMatrix, string Status = "native-head-axes-unverified");
 public sealed record BoneRecord(string Name, int Parent, double[] Head, double[] Tail, double Roll = 0, double[]? RestMatrix = null, string? SourcePath = null, uint? SourceHash = null);
 public sealed record MaterialRecord(string Name, double[] BaseColor, double Metallic, double Roughness,
@@ -16,7 +17,7 @@ public sealed record MaterialRecord(string Name, double[] BaseColor, double Meta
 public sealed record TextureRecord(string Name, int Width, int Height, bool Linear, byte[] Png);
 public sealed record MeshRecord(string Name, double[][] Positions, int[][] Triangles,
     double[][] Normals, double[][] Uv, int Material, WeightRecord[] Weights, ShapeRecord[] Shapes,
-    int[]? MaterialSlots = null, int[]? TriangleSlots = null, int SubmeshCount = 1, UvSetRecord[]? UvSets = null, double[][]? Tangents = null, double[][]? Colors = null, string? SourceId = null);
+    int[]? MaterialSlots = null, int[]? TriangleSlots = null, int SubmeshCount = 1, UvSetRecord[]? UvSets = null, double[][]? Tangents = null, double[][]? Colors = null, string? SourceId = null, int? Node = null, string? CoordinateSpace = null, bool RendererEnabled = true);
 public sealed record UvSetRecord(int Set, double[][] Values, int? NativeDimension = null, int? NativeFormat = null);
 public sealed record WeightRecord(int Vertex, int Bone, double Weight);
 public sealed record ShapeRecord(string Name, double[][] Offsets);
@@ -60,6 +61,7 @@ public static class WireJson
 
 public sealed record NativeIdentity(string Cab, string PathId);
 public sealed record MaterialSource(NativeIdentity MaterialId, NativeIdentity? ShaderId, string? ShaderName, string ResolutionStatus, NativeReference? ShaderSourceRef = null);
+public sealed record NativeMaterialClassification(string Category, string Rule, string Source, string Confidence);
 public sealed record PartEvidence(string? ShaderName, string? Discriminator = null, double? Value = null);
 public sealed record NativeReference(int FileId, string PathId);
 // Missing native ST/UV fields use scale [1,1], offset [0,0], UV0. Presence null means legacy metadata did not record presence.
@@ -69,7 +71,8 @@ public sealed record NprRenderState(int CustomRenderQueue, Dictionary<string,str
 public sealed record NprDiagnostic(string Code, string? Property, string Message);
 public sealed record MaterialNprDescriptor(int SchemaVersion, MaterialSource Source, string Part, PartEvidence PartEvidence,
     Dictionary<string,double> Floats, Dictionary<string,int> Ints, Dictionary<string,double[]> Colors,
-    Dictionary<string,NprTextureBinding> Textures, NprKeywords Keywords, NprRenderState RenderState, NprDiagnostic[] Diagnostics);
+    Dictionary<string,NprTextureBinding> Textures, NprKeywords Keywords, NprRenderState RenderState, NprDiagnostic[] Diagnostics,
+    NativeMaterialClassification? Classification = null);
 public sealed record TextureDescriptor(string Id, NativeIdentity Source, string Dimension, int Width, int Height,
     int NativeFormat, string ColorSpace, string? WrapU, string? WrapV, string? Filter,
     string Channels, string AlphaMode, string? PayloadRef, string DecodeStatus);
