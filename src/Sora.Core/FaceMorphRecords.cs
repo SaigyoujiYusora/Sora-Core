@@ -12,7 +12,8 @@ public sealed record FaceBoneRecord(int NativeId, int NameHash, string NativePat
     double[] Position, double[] Rotation, double[] Scale, int? AvatarNodeIndex = null);
 public sealed record FaceDeltaRecord(int Bone, double[] Position, double[] Rotation, double[] Scale);
 public sealed record FaceShaderRecord(string Parameter, int RendererMask, double DefaultValue, int BlendMode, int VectorIndex);
+public sealed record FacePartClassification(string Category, string Rule, string Source, string Confidence);
 public sealed record FaceControlRecord(string Name, int Id, int NameHash, int TagHash, int PartType,
-    FaceDeltaRecord[] Bones, FaceShaderRecord? Shader = null);
+    FaceDeltaRecord[] Bones, FaceShaderRecord? Shader = null, FacePartClassification? Classification = null);
 public sealed record FacePresetRecord(string Name, string SourcePath, bool Additive,
-    Dictionary<string, double> Weights, string[] MissingControls);
+    Dictionary<string, double> Weights, string[] MissingControls, FacePartClassification? Classification = null);

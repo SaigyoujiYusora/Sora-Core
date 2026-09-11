@@ -13,6 +13,24 @@ public static class NativeFaceMorph
     }
     private static double[] Vec(JsonElement o,string key) => new[]{"x","y","z"}.Select(x=>o.GetProperty(key).GetProperty(x).GetDouble()).ToArray();
 
+    /// <summary>Authored partType bit to a classified face channel; unrecognized bits stay UNKNOWN.</summary>
+    public static FacePartClassification ClassifyPart(int partType) => partType switch {
+        0x01=>new("EYE","part-type-bit-0x01","native-part-type","inferred"),
+        0x02=>new("EYE","part-type-bit-0x02","native-part-type","inferred"),
+        0x04=>new("BROW","part-type-bit-0x04","native-part-type","inferred"),
+        0x08=>new("BROW","part-type-bit-0x08","native-part-type","inferred"),
+        0x10=>new("MOUTH","part-type-bit-0x10","native-part-type","inferred"),
+        0x20=>new("SHADER","part-type-bit-0x20","native-part-type","inferred"),
+        0x40=>new("EAR","part-type-bit-0x40","native-part-type","inferred"),
+        0x80=>new("EAR","part-type-bit-0x80","native-part-type","inferred"),
+        _=>new("UNKNOWN","unrecognized-part-type-bit","native-part-type","unknown")};
+
+    /// <summary>Authored skeletalmorphanim directory group to a classified face preset.</summary>
+    public static FacePartClassification ClassifyPreset(string sourcePath) =>
+        sourcePath.Contains("/skeletalmorphanim/emotion/",StringComparison.OrdinalIgnoreCase)?new("EMOTION","preset-path-emotion","native-resource-path","inferred")
+        :sourcePath.Contains("/skeletalmorphanim/pose/",StringComparison.OrdinalIgnoreCase)?new("POSE","preset-path-pose","native-resource-path","inferred")
+        :new("UNKNOWN","no-recognized-preset-group","native-resource-path","unknown");
+
     public static FaceDriverRecord? Extract(GameResources resources, string prefabPath, ResolvedAsset avatar, SceneDocument scene)
     {
         string token=Path.GetFileName(prefabPath).Replace("_uimodel.prefab","",StringComparison.OrdinalIgnoreCase);
@@ -65,7 +83,7 @@ public static class NativeFaceMorph
                             Validation.Require(weights.TryAdd(name,w.GetProperty("_value").GetDouble()),"Duplicate preset control");
                         }
                     var additive=pose.GetProperty("_bIsAdditivePose");
-                    presets.Add(new(d.GetProperty("m_Name").GetString()!,preset.Path,additive.ValueKind==JsonValueKind.True||(additive.ValueKind==JsonValueKind.Number&&additive.GetInt32()!=0),weights,weights.Keys.Where(k=>!vocabulary.Contains(k)).ToArray()));
+                    presets.Add(new(d.GetProperty("m_Name").GetString()!,preset.Path,additive.ValueKind==JsonValueKind.True||(additive.ValueKind==JsonValueKind.Number&&additive.GetInt32()!=0),weights,weights.Keys.Where(k=>!vocabulary.Contains(k)).ToArray(),ClassifyPreset(preset.Path)));
                 }
         face=face with {Presets=presets.ToArray()}; Validate(face,scene); return face;
     }
@@ -151,7 +169,8 @@ public static class NativeFaceMorph
                 Validation.Require(r.GetProperty("type").GetProperty("class").GetString()=="SkMorphShaderParamFloat","Unsupported shader face parameter class");
                 var s=r.GetProperty("data"); shader=new(s.GetProperty("_paramName").GetString()!,s.GetProperty("_rendererMask").GetInt32(),s.GetProperty("defaultValue").GetDouble(),s.GetProperty("blendMode").GetInt32(),d.GetProperty("vectorIndex").GetInt32());
             }
-            controls.Add(new(controlNames[controls.Count].GetString()!,d.GetProperty("id").GetInt32(),d.GetProperty("nameHash").GetInt32(),d.GetProperty("tagHash").GetInt32(),d.GetProperty("partType").GetInt32(),deltas.ToArray(),shader));
+            int partType=d.GetProperty("partType").GetInt32();
+            controls.Add(new(controlNames[controls.Count].GetString()!,d.GetProperty("id").GetInt32(),d.GetProperty("nameHash").GetInt32(),d.GetProperty("tagHash").GetInt32(),partType,deltas.ToArray(),shader,ClassifyPart(partType)));
         }
         var poses=Array(definition.GetProperty("m_DefaultPose").GetProperty("data"),"m_X");
         Validation.Require(bones.All(b=>b.NativeId<poses.Length),"Face bone has no native default pose");

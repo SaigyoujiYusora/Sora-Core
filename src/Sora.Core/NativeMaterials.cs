@@ -10,6 +10,16 @@ public static class NativeMaterials
         "HGRP/CharacterNPR_Skin" => "Face", "HGRP/CharacterNPR_Eye" => "Eyes",
         "HGRP/CharacterNPR_Hair" => "Hair", "HGRP/CharacterNPR_VFX" => "VFX",
         "HGRP/CharacterNPR_OverlayShadow" => "OverlayShadow", "HGRP/CharacterNPR_LiquidAg" => "LiquidAg", _ => "Unknown" };
+    // Classification reuses the single shader->part mapping above and only adds provenance; names are never substring-guessed.
+    public static NativeMaterialClassification ClassifyMaterial(string? shader,string resolution,IReadOnlyDictionary<string,double> floats)
+    {
+        if(resolution!="resolved") return new("unclassified","shader-not-resolved","native-shader-resolution:"+resolution,"unknown");
+        if(shader is null) return new("unclassified","resolved-shader-name-missing","native-shader-name","unknown");
+        string part=Classify(shader,floats);
+        if(part=="Unknown") return new("unclassified","no-verified-shader-mapping","native-shader-name","unknown");
+        bool fur=shader=="HGRP/CharacterNPR"&&floats.GetValueOrDefault("_UseCharacterFur")!=0;
+        return new(part,fur?"shader-name-exact-match + float-_UseCharacterFur":"shader-name-exact-match","native-shader-name","inferred");
+    }
     public static string? ShaderName(JsonElement data) => data.TryGetProperty("m_ParsedForm", out var parsed) && parsed.TryGetProperty("m_Name", out var nested) && !string.IsNullOrWhiteSpace(nested.GetString()) ? nested.GetString() : data.TryGetProperty("m_Name", out var name) ? name.GetString() : null;
     public static string Usage(string slot) => slot is "_BumpMap" or "_NormalMap" or "_NormalTex" or "_SplitNormalMap" or "_NTexture" or "_NormalTexture" ? "normal" : slot is "_BaseMap" or "_MainTex" or "_BaseColorMap" or "_DiffuseTex" or "_DTexture" or "_DiffuseTexture" or "_EmissionMap" or "_ShadowLutTex" or "_MatcapTex" ? "color" : "raw";
     static JsonElement Json(SerializedObject value) => JsonSerializer.SerializeToElement(value.Data, WireJson.Options);
@@ -77,10 +87,11 @@ public static class NativeMaterials
         }
         var tags=Array(data,"stringTagMap").ToDictionary(x=>x.GetProperty("first").GetString()!,x=>x.GetProperty("second").GetString()!,StringComparer.Ordinal);
         string part=Classify(shaderName,floats);
+        var classification=ClassifyMaterial(shaderName,resolution,floats);
         if(part=="Unknown") diagnostics.Add(new("shader_unknown",null,"No verified NPR part mapping for the resolved shader identity"));
         return new(1,new(new(source.Cab,Id(source.Object.Id)),shader is null?null:new(shader.Cab,Id(shader.Object.Id)),shaderName,resolution,shaderSourceRef),part,
             new(shaderName,shaderName=="HGRP/CharacterNPR"&&floats.ContainsKey("_UseCharacterFur")?"_UseCharacterFur":null,shaderName=="HGRP/CharacterNPR"&&floats.TryGetValue("_UseCharacterFur",out var fur)?fur:null),floats,ints,colors,bindings,
             new(Strings(data,"m_ValidKeywords"),Strings(data,"m_InvalidKeywords"),Legacy(data)),
-            new(data.TryGetProperty("m_CustomRenderQueue",out var queue)?queue.GetInt32():-1,tags,Strings(data,"disabledShaderPasses"),data.TryGetProperty("m_DoubleSidedGI",out var gi)&&gi.GetBoolean()),diagnostics.ToArray());
+            new(data.TryGetProperty("m_CustomRenderQueue",out var queue)?queue.GetInt32():-1,tags,Strings(data,"disabledShaderPasses"),data.TryGetProperty("m_DoubleSidedGI",out var gi)&&gi.GetBoolean()),diagnostics.ToArray(),classification);
     }
 }

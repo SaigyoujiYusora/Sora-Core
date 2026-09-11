@@ -23,7 +23,22 @@ internal static class NprTests
                 _=>throw new KeyNotFoundException("missing")
             },(_,_,_)=>throw new Exception("Cubemap must not decode as 2D"),payloads,descriptors);
             if(result.Part!="Fur" || result.Source.MaterialId.PathId!="-9007199254740993" || result.Textures["_Null"].Status!="null" || result.Textures["_Missing"].Status!="missing" || result.Textures["IBL_CharMaxCubemap"].Status!="unsupported" || result.Colors["_HDR"][0]!=8 || result.Keywords.Valid[0]!="FUR" || descriptors.Values.Single().Dimension!="Cube") throw new Exception();
+            if(result.Classification is null || result.Classification.Category!="Fur" || result.Classification.Source!="native-shader-name" || result.Classification.Confidence!="inferred") throw new Exception("Extraction lost native material classification");
             Validation.Scene(new("test",[],[],[new("m",[1,1,1,1],0,0.5,Npr:result)],[],[],descriptors.Values.ToArray()));
+        });
+        test("native material classification records rule and keeps unresolved or unmapped shaders unclassified",()=> {
+            var skin=NativeMaterials.ClassifyMaterial("HGRP/CharacterNPR_Skin","resolved",new Dictionary<string,double>());
+            if(skin.Category!="Face" || skin.Rule!="shader-name-exact-match" || skin.Source!="native-shader-name" || skin.Confidence!="inferred") throw new Exception();
+            var fur=NativeMaterials.ClassifyMaterial("HGRP/CharacterNPR","resolved",new Dictionary<string,double>{{"_UseCharacterFur",1}});
+            if(fur.Category!="Fur" || fur.Rule!="shader-name-exact-match + float-_UseCharacterFur") throw new Exception();
+            var plain=NativeMaterials.ClassifyMaterial("HGRP/CharacterNPR","resolved",new Dictionary<string,double>());
+            if(plain.Category!="Standard" || plain.Rule!="shader-name-exact-match") throw new Exception();
+            var unmapped=NativeMaterials.ClassifyMaterial("M_actor_hair","resolved",new Dictionary<string,double>());
+            if(unmapped.Category!="unclassified" || unmapped.Rule!="no-verified-shader-mapping" || unmapped.Confidence!="unknown") throw new Exception("Unmapped shader must stay unclassified");
+            var unresolved=NativeMaterials.ClassifyMaterial(null,"missing",new Dictionary<string,double>());
+            if(unresolved.Category!="unclassified" || unresolved.Source!="native-shader-resolution:missing" || unresolved.Confidence!="unknown") throw new Exception("Unresolved shader must stay unclassified");
+            var nameless=NativeMaterials.ClassifyMaterial(null,"resolved",new Dictionary<string,double>());
+            if(nameless.Category!="unclassified" || nameless.Rule!="resolved-shader-name-missing" || nameless.Source!="native-shader-name") throw new Exception("Resolved-but-nameless shader must stay unclassified without claiming unresolved");
         });
         test("native shader unresolved pointer and texture field presence survive transport",()=> {
             var doc=new SerializedDocument("test",[],[]);
@@ -78,5 +93,5 @@ internal static class NprTests
     static MaterialNprDescriptor Fixture()=>new(1,new(new("cab","-9223372036854775808"),new("cab","9223372036854775807"),"HGRP/CharacterNPR_Hair","resolved"),"Hair",new("HGRP/CharacterNPR_Hair"),
         new(){{"_ZTest",3},{"_MissingVsZero",0}},new(){{"integer",-17}},new(){{"_Hdr",[8,-2,0.5,3]}},
         new(){{"_Null",new(new(0,"0"),null,"null",[2,3],[-1,0.5],2,null)},{"_Missing",new(new(4,"-77"),null,"missing",[1,1],[0,0],0,null)}},
-        new(["VALID"],["INVALID"],["LEGACY"]),new(2450,new(){{"RenderType","Transparent"}},["ShadowCaster"],true),[]);
+        new(["VALID"],["INVALID"],["LEGACY"]),new(2450,new(){{"RenderType","Transparent"}},["ShadowCaster"],true),[],new("Hair","shader-name-exact-match","native-shader-name","inferred"));
 }

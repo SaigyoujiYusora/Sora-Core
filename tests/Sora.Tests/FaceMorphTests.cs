@@ -82,5 +82,16 @@ internal static class FaceMorphTests
             reject(()=>NativeFaceMorph.Validate(merged with{PrimaryBoneCount=int.MaxValue},target));
             reject(()=>NativeFaceMorph.Validate(face with{PrimaryBoneCount=1},scene));
         });
+        test("authored face part classification follows native partType bits and preset groups",()=>{
+            foreach(var (bit,category,rule) in new[]{(1,"EYE","part-type-bit-0x01"),(2,"EYE","part-type-bit-0x02"),(4,"BROW","part-type-bit-0x04"),(8,"BROW","part-type-bit-0x08"),(16,"MOUTH","part-type-bit-0x10"),(32,"SHADER","part-type-bit-0x20"),(64,"EAR","part-type-bit-0x40"),(128,"EAR","part-type-bit-0x80")}) {
+                var part=NativeFaceMorph.ClassifyPart(bit);
+                if(part.Category!=category||part.Rule!=rule||part.Source!="native-part-type"||part.Confidence!="inferred")throw new Exception("Native part bit classification differs: "+bit);
+            }
+            var unrecognized=NativeFaceMorph.ClassifyPart(3);
+            if(unrecognized.Category!="UNKNOWN"||unrecognized.Confidence!="unknown")throw new Exception("Unrecognized part bit was not left unclassified");
+            if(NativeFaceMorph.ClassifyPreset("a/skeletalmorphanim/emotion/x.asset").Category!="EMOTION")throw new Exception("Emotion preset group was not classified");
+            if(NativeFaceMorph.ClassifyPreset("a/skeletalmorphanim/pose/x.asset").Category!="POSE")throw new Exception("Pose preset group was not classified");
+            if(NativeFaceMorph.ClassifyPreset("a/other/x.asset").Category!="UNKNOWN")throw new Exception("Unknown preset group was not left unclassified");
+        });
     }
 }
