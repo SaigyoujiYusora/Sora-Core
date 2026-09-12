@@ -1,12 +1,15 @@
 using System.Numerics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Sora.Core;
 
 public sealed record NativeAnimationScalarTrack(uint Path, int TypeId, int CustomType, uint Attribute, float SampleRate, float[] Values);
 public sealed record NativeAnimationSource(string ResourcePath, string Cab, string PathId, string ManifestHash);
+public sealed record NativeAnimationMetadata(NativeAnimationSource? Source, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] NativeUnboundTransformTrack[]? UnboundTransformTracks = null);
+/// <summary>Exact native generic transform data whose path hash has no target in the character Avatar or the imported
+/// rig. Times and channel samples are retained verbatim; the track never participates in pose evaluation.</summary>
 public sealed record NativeUnboundTransformTrack(int SourceTrack, uint Path, bool Position, bool Rotation, bool Scale, double[] Times, double[][] Translations, double[][] Rotations, double[][] Scales);
-public sealed record NativeAnimationMetadata(NativeAnimationSource? Source, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics, NativeUnboundTransformTrack[]? UnboundTransformTracks = null);
 public sealed record NativeAnimationConversion(ClipRecord Clip, NativeAnimationScalarTrack[] CustomScalars, string[] Diagnostics, NativeAnimationSource? Source = null);
 public sealed record NativeAnimationSelection(string Cab, string PathId);
 public sealed record NativeAnimationSubclip(string ResourcePath, string Cab, string PathId, string Name);
@@ -20,9 +23,9 @@ public static class NativeAnimationClip
     public static NativeAnimationSubclip[] DiscoverControllerClips(GameResources resources,string characterPrefabPath)
     {
         Validation.Require(!string.IsNullOrWhiteSpace(characterPrefabPath)&&characterPrefabPath.EndsWith("_uimodel.prefab",StringComparison.OrdinalIgnoreCase),"Select an exact character UI prefab");
-        var prefabs=resources.Manifest.Assets.Where(x=>x.Path==characterPrefabPath).DistinctBy(x=>(x.Path,x.Bundle)).ToArray();
+        var prefabs=resources.Manifest.Assets.Where(x=>x.Path==characterPrefabPath).DistinctBy(x=>(x.Hash,x.Path)).ToArray();
         Validation.Require(prefabs.Length==1,"Character prefab identity is absent or ambiguous");
-        var animators=resources.LoadClosure(prefabs[0].Bundle).SelectMany(cab=>resources.GetDocument(cab).Objects.Where(x=>x.ClassId==95).Select(x=>(cab,obj:x))).ToArray();
+        var animators=resources.LoadClosure(resources.SelectAddress(prefabs[0].Path,prefabs[0].Hash.ToString("x16")).Bundle).SelectMany(cab=>resources.GetDocument(cab).Objects.Where(x=>x.ClassId==95).Select(x=>(cab,obj:x))).ToArray();
         Validation.Require(animators.Length==1,"Character prefab must have one Animator");
         var controller=resources.Resolve(animators[0].cab,JsonSerializer.SerializeToElement(animators[0].obj.Data,WireJson.Options).GetProperty("m_Controller"));
         if(controller is null)return [];
@@ -42,18 +45,43 @@ public static class NativeAnimationClip
                     result.TryAdd((path,clip.Cab,clip.Object.Id),new(path,clip.Cab,clip.Object.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),name));
                 }
         }
+        // The character's game AnimationConfig controller is the authored gameplay animation source. Its
+        // clips are real native clips with real container paths, but they are not referenced by the UI
+        // prefab controller, so the character's authored animation set is only complete when both
+        // controllers are read. Clips already discovered above keep their existing identity.
+        string characterId=Path.GetFileNameWithoutExtension(characterPrefabPath)[..^"_uimodel".Length];
+        var declaration=NativeCharacterEquipment.Read(resources,characterId);
+        if(declaration.AnimationConfigPath is not null)
+        {
+            var config=NativeAnimationConfig.ReadController(resources,declaration.AnimationConfigPath);
+            foreach(var reference in NativeAnimationController.Read(resources,config.Controller))
+            {
+                var clip=reference.Clip;if(!visited.Add((clip.Cab,clip.Object.Id)))continue;
+                string name=Json(clip).GetProperty("m_Name").GetString()!;
+                foreach(var container in clip.Document.Objects.Where(x=>x.ClassId==142))
+                    foreach(var row in NativeHumanoidRig.ArrayField(JsonSerializer.SerializeToElement(container.Data,WireJson.Options),"m_Container",1000000))
+                    {
+                        var pointer=row.GetProperty("second").GetProperty("asset");if(pointer.GetProperty("m_PathID").GetInt64()!=clip.Object.Id)continue;
+                        var target=resources.Resolve(clip.Cab,pointer);if(target is null||target.Cab!=clip.Cab||target.Object.Id!=clip.Object.Id)continue;
+                        string path=row.GetProperty("first").GetString()!;Validation.Require(!string.IsNullOrWhiteSpace(path)&&path.Length<=4096,"Invalid native gameplay clip path");
+                        result.TryAdd((path,clip.Cab,clip.Object.Id),new(path,clip.Cab,clip.Object.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),name));
+                    }
+            }
+        }
         return result.Values.OrderBy(x=>x.ResourcePath,StringComparer.Ordinal).ThenBy(x=>x.Name,StringComparer.Ordinal).ThenBy(x=>x.PathId,StringComparer.Ordinal).ToArray();
     }
+
+    private static JsonElement Json(ResolvedAsset asset)=>JsonSerializer.SerializeToElement(asset.Object.Data,WireJson.Options);
 
     private static ResolvedAsset[] ResolveClips(GameResources resources,string resourcePath,string? knownCab=null)
     {
         Validation.Require(!string.IsNullOrWhiteSpace(resourcePath)&&resourcePath.Length<=4096,"Select an exact animation resource path");
-        var addresses=resources.Manifest.Assets.Where(x=>x.Path==resourcePath).DistinctBy(x=>(x.Path,x.Bundle)).ToArray();
+        var addresses=resources.Manifest.Assets.Where(x=>x.Path==resourcePath).DistinctBy(x=>(x.Hash,x.Path)).ToArray();
         Validation.Require(addresses.Length<=1&&(addresses.Length==1||!string.IsNullOrWhiteSpace(knownCab)),"Select one exact native animation resource path");
         var clips=new Dictionary<(string,long),ResolvedAsset>();
         // Dependency-only UI clips need an explicit CAB already in a verified loaded closure.
         // The exact container path below remains mandatory; knownCab is not a substitute path.
-        foreach(string cab in addresses.Length==1?resources.LoadClosure(addresses[0].Bundle):new[]{knownCab!})
+        foreach(string cab in addresses.Length==1?resources.LoadClosure(resources.SelectAddress(addresses[0].Path,addresses[0].Hash.ToString("x16")).Bundle):new[]{knownCab!})
             foreach(var container in resources.GetDocument(cab).Objects.Where(x=>x.ClassId==142))
                 foreach(var row in NativeHumanoidRig.ArrayField(JsonSerializer.SerializeToElement(container.Data,WireJson.Options),"m_Container",1000000))
                     if(row.GetProperty("first").GetString()==resourcePath)
@@ -64,7 +92,7 @@ public static class NativeAnimationClip
         Validation.Require(clips.Count>0,"Exact resource has no AnimationClip container target");return clips.Values.ToArray();
     }
 
-    public static NativeAnimationConversion Import(GameResources resources, string resourcePath, NativeHumanoidRig rig, SceneDocument scene, string? workerExecutable = null, NativeAnimationSelection? selection = null)
+    public static NativeAnimationConversion Import(GameResources resources, string resourcePath, NativeHumanoidRig rig, SceneDocument scene, string? workerExecutable = null, NativeAnimationSelection? selection = null, Func<string,long,bool>? sourceVerified = null)
     {
         var candidates=ResolveClips(resources,resourcePath,selection?.Cab);
         if(selection is not null)
@@ -74,18 +102,25 @@ public static class NativeAnimationClip
         }
         Validation.Require(candidates.Length==1,"Select one exact AnimationClip subasset by CAB and path ID");var source=candidates[0];
         var clip=JsonSerializer.SerializeToElement(source.Object.Data,WireJson.Options);var buffer=clip.GetProperty("m_AclCompressedBuffer");
-        byte[] transforms=ConvertBytes(buffer,"TransformBufferData");var samples=AclCodec.Decode(transforms,ConvertBytes(buffer,"FloatBufferData"),workerExecutable);
-        var rootSamples=AclCodec.Decode(transforms,ConvertBytes(buffer,"RootMotionBufferData"),workerExecutable);
-        var result=Convert(clip.GetProperty("m_Name").GetString()!,new NativeAnimationBinding(clip,samples,rootSamples),rig,scene);
+        NativeAnimationBinding binding;
+        if(buffer.GetProperty("TransformBufferData").GetProperty("Array").GetString() is { Length: > 0 }) {
+            byte[] transforms=ConvertBytes(buffer,"TransformBufferData");var samples=AclCodec.Decode(transforms,ConvertBytes(buffer,"FloatBufferData"),workerExecutable);
+            var rootSamples=AclCodec.Decode(transforms,ConvertBytes(buffer,"RootMotionBufferData"),workerExecutable);
+            binding=new NativeAnimationBinding(clip,samples,rootSamples);
+        } else binding=new NativeAnimationBinding(clip,NativeStreamedClipDecoder.Decode(clip));
+        // The lazy gate always uses the exact identity of the source that is actually being converted, never
+        // the caller's untrusted selection.
+        Func<bool>? publicClipVerified=sourceVerified is null?null:()=>sourceVerified(source.Cab,source.Object.Id);
+        var result=Convert(clip.GetProperty("m_Name").GetString()!,binding,rig,scene,publicClipVerified);
         var identity=new NativeAnimationSource(resourcePath,source.Cab,source.Object.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),resources.Manifest.Hash);
         var persisted=result.Clip with{Native=result.Clip.Native! with{Source=identity}};
         Validation.Scene(scene with{Clips=[persisted]});return result with{Source=identity,Clip=persisted};
     }
 
-    public static NativeAnimationConversion Convert(string name, NativeAnimationBinding binding, NativeHumanoidRig rig, SceneDocument scene)
+    public static NativeAnimationConversion Convert(string name, NativeAnimationBinding binding, NativeHumanoidRig rig, SceneDocument scene, Func<bool>? publicClipVerified = null)
     {
         Validation.Scene(scene);
-        Validation.Require(binding.RootScalarsValidated,"Native clip conversion requires verified root-buffer scalar agreement");
+        Validation.Require(binding.RootScalarsValidated||binding.NonAclSingleStream,"Native clip conversion requires verified root-buffer scalar agreement");
         var indexed = scene.Bones.Select((bone,index)=>(bone,index)).Where(x=>x.bone.SourceHash.HasValue).ToArray();
         Validation.Require(scene.Npc is not null || indexed.Select(x=>x.bone.SourceHash).Distinct().Count()==indexed.Length, "Imported rig has duplicate source hashes");
         var byHash = scene.Npc is not null?NativeNpcImport.AnimationBindings(scene,rig.SourcePaths):indexed.ToDictionary(x=>x.bone.SourceHash!.Value,x=>x.index);
@@ -94,7 +129,30 @@ public static class NativeAnimationClip
             Validation.Require(rig.SourcePaths.TryGetValue(hash,out string? path) && byHash.TryGetValue(hash,out _), "Animation identity is absent from source or imported rig");
             int index=byHash[hash];Validation.Require(scene.Bones[index].SourcePath==path,"Animation hash and exact bone path disagree");return index;
         }
-        var generic=binding.TransformPaths.Select(Join).ToArray();var genericSet=generic.ToHashSet();
+        // Preserve the authored source track order. A generic native track whose exact path hash exists on
+        // neither the character Avatar nor the imported rig is kept verbatim as unbound native data; it is
+        // never remapped, never matched by name or proximity, and never evaluated against a bone that does
+        // not exist. Tracks after the gap keep their original source index.
+        var slots=new int[binding.TransformPaths.Count];var unbound=new List<NativeUnboundTransformTrack>();
+        for(int track=0;track<slots.Length;track++)
+        {
+            uint hash=binding.TransformPaths[track];bool inSource=rig.SourcePaths.ContainsKey(hash),inRig=byHash.ContainsKey(hash);
+            if(inSource&&inRig){slots[track]=Join(hash);continue;}
+            Validation.Require(!inSource&&!inRig,"Native transform identity exists on only one side for path hash "+hash.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Validation.Require(publicClipVerified is not null&&publicClipVerified(),"Animation identity is absent from source or imported rig");
+            bool position=binding.PositionTracks[track],rotation=binding.RotationTracks[track],scale=binding.ScaleTracks[track];
+            var times=new double[binding.Samples];
+            var translations=new double[position?binding.Samples:0][];var rotations=new double[rotation?binding.Samples:0][];var scales=new double[scale?binding.Samples:0][];
+            for(int sample=0;sample<binding.Samples;sample++)
+            {
+                times[sample]=sample/(double)binding.SampleRate;var raw=binding.RawTransform(sample,track);
+                if(position)translations[sample]=[raw.Translation.X,raw.Translation.Y,raw.Translation.Z];
+                if(rotation)rotations[sample]=[raw.Rotation.X,raw.Rotation.Y,raw.Rotation.Z,raw.Rotation.W];
+                if(scale)scales[sample]=[raw.Scale.X,raw.Scale.Y,raw.Scale.Z];
+            }
+            unbound.Add(new(track,hash,position,rotation,scale,times,translations,rotations,scales));slots[track]=-1;
+        }
+        var generic=slots.Where(x=>x>=0).ToArray();var genericSet=generic.ToHashSet();
         var checkedParents = new HashSet<int>();
         foreach (int animatedBone in generic)
             for (int index = animatedBone; index >= 0 && checkedParents.Add(index); index = scene.Bones[index].Parent)
@@ -138,7 +196,7 @@ public static class NativeAnimationClip
         for(int sample=0;sample<binding.Samples;sample++)
         {
             var human=binding.HasHumanoid?NativeHumanoidPose.Evaluate(rig,binding.HumanFrame(sample)):null;var local=(Matrix4x4[])nativeLocal.Clone();
-            for(int i=0;i<generic.Length;i++)local[generic[i]]=binding.TransformLocal(sample,i,nativeLocal[generic[i]]);
+            for(int track=0;track<slots.Length;track++)if(slots[track]>=0)local[slots[track]]=binding.TransformLocal(sample,track,nativeLocal[slots[track]]);
             foreach(var body in human?.Body??[]){int bone=Join(body.PathHash);local[bone]=Matrix4x4.CreateFromQuaternion(body.Rotation)*Matrix4x4.CreateTranslation(local[bone].Translation);}
             var world=new Matrix4x4[scene.Bones.Length];var converted=new Matrix4x4[scene.Bones.Length];double time=sample/(double)binding.SampleRate;
             for(int bone=0;bone<world.Length;bone++)
@@ -154,11 +212,15 @@ public static class NativeAnimationClip
                 keys[(bone,"location")].Add(new(time,[location.X,location.Y,location.Z]));keys[(bone,"rotation")].Add(new(time,[rotation.X,rotation.Y,rotation.Z,rotation.W]));keys[(bone,"scale")].Add(new(time,[scale.X,scale.Y,scale.Z]));
             }
         }
-        var clip=new ClipRecord(name,(binding.Samples-1)/(double)binding.SampleRate,binding.SampleRate,keys.OrderBy(x=>x.Key.bone).ThenBy(x=>x.Key.channel,StringComparer.Ordinal).Select(x=>new TrackRecord(x.Key.bone,x.Key.channel,x.Value.ToArray())).ToArray());
+        var clip=new ClipRecord(name,binding.Duration,binding.SampleRate,keys.OrderBy(x=>x.Key.bone).ThenBy(x=>x.Key.channel,StringComparer.Ordinal).Select(x=>new TrackRecord(x.Key.bone,x.Key.channel,x.Value.ToArray())).ToArray());
         var custom=binding.CustomScalarAttributes.Select(attribute=>new NativeAnimationScalarTrack(0,95,0,attribute,binding.SampleRate,Enumerable.Range(0,binding.Samples).Select(sample=>binding.ScalarValue(sample,attribute)).ToArray())).ToArray();
         var diagnostics=new List<string>();if(custom.Length>0)diagnostics.Add("Custom Animator scalar properties are preserved without mapping them to bones.");
+        if(binding.NonAclSingleStream)diagnostics.Add("Classic single-stream clip: the authored curves are used unchanged and no separate root buffer exists.");
+        if(binding.AuthoredEndBeyondGrid)diagnostics.Add("Authored clip end lies inside the final decoded sample interval; the last decoded sample value is held to the authored end (no fabricated key).");
+        foreach(string note in binding.StorageNotes)diagnostics.Add(note);
         if(binding.RootComparisonMaximumError>0)diagnostics.Add("Independent root-stream quantization differs by at most "+binding.RootComparisonMaximumError.ToString("G9",System.Globalization.CultureInfo.InvariantCulture)+"; primary scalar values are retained.");
-        var messages=diagnostics.ToArray();clip=clip with{Native=new(null,custom,messages)};Validation.Scene(scene with{Clips=[clip]});
+        if(unbound.Count>0)diagnostics.Add(unbound.Count+" native transform track(s) have no target bone in the character Avatar or imported rig; the exact path hash, authored channels, samples and times are preserved as unbound native data and excluded from evaluation: "+string.Join(", ",unbound.Select(x=>x.Path.ToString(System.Globalization.CultureInfo.InvariantCulture)))+".");
+        var messages=diagnostics.ToArray();clip=clip with{Native=new(null,custom,messages,unbound.Count>0?unbound.ToArray():null)};Validation.Scene(scene with{Clips=[clip]});
         return new(clip,custom,messages);
     }
     private static Matrix4x4 Inverse(Matrix4x4 x){Validation.Require(Matrix4x4.Invert(x,out var inverse),"Singular animation rest matrix");return inverse;}

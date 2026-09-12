@@ -20,6 +20,15 @@ static class NativeAnimationServiceTests
             Check(NativeAnimationService.Search(manifest, "attack", "assets/chr_0009_azrila_uimodel.prefab", 1)[0].Id == rows[0].Id);
             Check(NativeAnimationService.Search(manifest, "", null).Length == 3);
         });
+        test("animation pages retain total beyond 200 and mark name rules as inferred",()=>{
+            var many=new NativeManifest("fixture","hash","",0,[],Enumerable.Range(0,1105).Select(i=>new AddressResource(i,"assets/animations/a_actor_azrila_attack_"+i.ToString("D4")+".fbx",0,1)).ToArray());
+            var rows=NativeAnimationCatalog.Discover(many,"assets/chr_0009_azrila_uimodel.prefab");
+            var first=NativeAnimationCatalog.Page(rows,"",0,200,"attack");var last=NativeAnimationCatalog.Page(rows,"",1000,200,"attack");
+            Check(first.Total==1105&&first.Rows.Length==200&&last.Total==1105&&last.Rows.Length==105);
+            Check(first.Rows.All(row=>row.Classification.Confidence=="inferred")&&NativeAnimationCatalog.Classify("unknown.fbx").Category=="unclassified");
+            Check(NativeAnimationCatalog.Classify("assets/a_fx_runicstone_lock.anim").Category=="unclassified"&&NativeAnimationCatalog.Classify("assets/a_actor_boy_run_loop.fbx").Category=="move");
+            reject(()=>NativeAnimationCatalog.Page(rows,"",-1,20));reject(()=>NativeAnimationCatalog.Page(rows,"",0,20,"invented"));
+        });
         test("native animation search rejects invalid windows and queries", () =>
         {
             reject(() => NativeAnimationService.Search(manifest, "bad\nquery"));

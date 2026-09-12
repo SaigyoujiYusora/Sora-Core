@@ -45,7 +45,13 @@ public static class NativeNpcImport
         if(npc.PreAuthoredRestMatrices is {} rests)Validation.Require(rests.Length==scene.Bones.Length&&rests.All(r=>r is not null&&r.Length==16&&r.All(double.IsFinite)),"Invalid pre-authored NPC rest snapshot");
         if(npc.NeutralMeshChanges is {} changes)Validation.Require(changes.Length==scene.Meshes.Length&&changes.Select(c=>c?.Mesh).Distinct(StringComparer.Ordinal).Count()==changes.Length&&changes.All(c=>c is not null&&meshNames.Contains(c.Mesh)&&double.IsFinite(c.MaxDisplacement)&&c.MaxDisplacement>=0),"Invalid NPC neutral change diagnostics");
     }
-    public static string[] Search(GameResources resources,string query)=>resources.LogicalNames.Where(x=>x.StartsWith("Json/NPC/PrefabInfo/",StringComparison.OrdinalIgnoreCase)&&x.EndsWith(".json",StringComparison.OrdinalIgnoreCase)&&x.Contains(query,StringComparison.OrdinalIgnoreCase)).ToArray();
+    public static string[] Search(GameResources resources,string query)
+    {
+        using var index=WireJson.Parse(resources.GetBytes("Json/NPC/PrefabInfo/manifest.json"));
+        return index.RootElement.GetProperty("files").EnumerateArray()
+            .Select(file=>"Json/NPC/PrefabInfo/"+file.GetString()!)
+            .Where(path=>path.Contains(query,StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
     public static NativeNpcDeclaration Parse(JsonElement e)
     {
         string? Optional(string k)=>e.TryGetProperty(k,out var p)&&p.GetString() is {Length:>0} v?v:null;
@@ -59,8 +65,8 @@ public static class NativeNpcImport
         var segments=declaration.Split('/');Validation.Require(segments.Length>=3&&!segments.Any(x=>x.Length==0||x is "." or ".."),"Invalid native declaration");
         string file=kind switch {"template"=>"data_npc_avatartemplet_", "mesh"=>"data_npc_avatarmesh_", "face"=>"data_facemorph_avatar_", "ear"=>"data_earmorph_avatar_", _=>throw new InvalidDataException("Unknown NPC declaration kind")};
         string folder=kind switch {"template"=>"/gameplay/npc/avatartemplet/", "mesh"=>"/gameplay/npc/avatarmesh/", _=>"/skeletalmorphcfg/"+segments[^2].ToLowerInvariant()+"/"};
-        var matches=g.Manifest.Assets.Where(a=>a.Path.Contains(folder,StringComparison.OrdinalIgnoreCase)&&Path.GetFileName(a.Path).Equals(file+segments[^1]+".asset",StringComparison.OrdinalIgnoreCase)).DistinctBy(a=>(a.Hash,a.Path,a.Bundle)).ToArray();
-        Validation.Require(matches.Length==1,"Declared NPC resource absent or ambiguous: "+declaration);return matches[0];
+        var matches=g.Manifest.Assets.Where(a=>a.Path.Contains(folder,StringComparison.OrdinalIgnoreCase)&&Path.GetFileName(a.Path).Equals(file+segments[^1]+".asset",StringComparison.OrdinalIgnoreCase)).DistinctBy(a=>(a.Hash,a.Path)).ToArray();
+        Validation.Require(matches.Length==1,"Declared NPC resource absent or ambiguous: "+declaration);return g.SelectAddress(matches[0].Path,matches[0].Hash.ToString("x16"));
     }
     public static DatabaseDocument Import(GameResources g,string query)
     {
@@ -79,7 +85,7 @@ public static class NativeNpcImport
         {
             string name=acc.GetProperty("name").GetString()!;
             if(acc.GetProperty("bIsHidden").GetBoolean()){diagnostics.Add("Hidden authored accessory retained: "+name);continue;}
-            var addresses=g.Manifest.Assets.Where(a=>a.Path.Contains("/npc/accessory/",StringComparison.OrdinalIgnoreCase)&&Path.GetFileNameWithoutExtension(a.Path)==name).DistinctBy(a=>(a.Hash,a.Path,a.Bundle)).ToArray();Validation.Require(addresses.Length==1,"NPC accessory configuration absent or ambiguous");
+            var addresses=g.Manifest.Assets.Where(a=>a.Path.Contains("/npc/accessory/",StringComparison.OrdinalIgnoreCase)&&Path.GetFileNameWithoutExtension(a.Path)==name).DistinctBy(a=>(a.Hash,a.Path)).ToArray();Validation.Require(addresses.Length==1,"NPC accessory configuration absent or ambiguous");
             var asset=g.ResolveAddress(addresses[0],114);var cfg=Json(asset.Object);var mounts=A(Json(template.Object),"mountconfigs").Where(m=>m.GetProperty("mountType").GetInt32()==acc.GetProperty("mountPoint").GetInt32()).ToArray();Validation.Require(mounts.Length==1,"NPC accessory mount absent or ambiguous");
             Validation.Require(cfg.GetProperty("attach").GetProperty("bUseRootOffset").GetInt32()==0,"NPC accessory root offset requires explicit conversion");
             var mount=mounts[0];Validation.Require(new[]{"x","y","z"}.All(k=>mount.GetProperty("attachOffset").GetProperty(k).GetDouble()==0)&&new[]{"bLockLocalPosition","bLocalLockRotation","bLocalLockScale"}.All(k=>mount.GetProperty(k).GetInt32()==0),"Accessory mount offset/locks require explicit conversion");

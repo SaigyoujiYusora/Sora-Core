@@ -9,30 +9,42 @@ public sealed class GameResources
     private sealed record Source(string Index, LogicalResource Resource);
     private sealed record CabSource(Source Source, VfsEntry Entry);
     private readonly Dictionary<string, Source> files = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Source> declarations = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CabSource> cabs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SerializedDocument> documents = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<int> loaded = [];
     private readonly Dictionary<int, string[]> bundleCabs = [];
     private long decodedBytes;
     private readonly string sourceRoot;
+    private int equivalentCopies, shadowedCopies, physicalFallbacks;
     public NativeManifest Manifest { get; }
+    public object SourceSelectionPolicy => new { priority = "Persistent before StreamingAssets", equivalentCopies, shadowedCopies, physicalFallbacks, contentValidation = "selected native payload digest checked during extraction; search only checks indexed file ranges" };
+    public string[] PhysicalChunkPaths => files.Values.Select(source=>Path.Combine(Path.GetDirectoryName(source.Index)!,source.Resource.Chunk)).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public GameResources(string root)
     {
+        OperationProgress.Report("read-game-index");
         root = Path.GetFullPath(root);
         string data = Directory.Exists(Path.Combine(root, "Endfield_Data")) ? Path.Combine(root, "Endfield_Data") : root;
         sourceRoot = data;
         var unavailable = new Dictionary<string, Source>(StringComparer.OrdinalIgnoreCase);
         var physicalSources = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (string location in new[] { "Persistent", "StreamingAssets" })
-            foreach (string block in new[] { "1CDDBF1F", "7064D8E2", "0CE8FA57", "775A31D1" })
+            foreach (string block in new[] { "1CDDBF1F", "7064D8E2", "0CE8FA57", "775A31D1", "42A8FCA6" })
             {
                 string indexPath = Path.Combine(data, location, "VFS", block, block + ".blc");
+                OperationProgress.Report("read-game-index", detail: indexPath);
                 if (!File.Exists(indexPath)) continue;
-                foreach (var entry in BlockIndex.Read(indexPath).Resources)
+                var entries=BlockIndex.Read(indexPath).Resources;int indexed=0;
+                foreach (var entry in entries)
                 {
+                    if(indexed++%4096==0)OperationProgress.Report("index-logical-resources",indexed-1,entries.Length,indexPath);
                     string name = Normalize(entry.Name);
-                    if (files.ContainsKey(name)) continue;
+                    declarations.TryAdd(name,new(indexPath,entry));
+                    if (files.TryGetValue(name,out var chosen)) {
+                        if(chosen.Resource.PayloadDigest==entry.PayloadDigest&&chosen.Resource.Length==entry.Length)equivalentCopies++;else shadowedCopies++;
+                        continue;
+                    }
                     string chunkKey = location + "/" + block + "/" + entry.Chunk;
                     if (!physicalSources.TryGetValue(chunkKey, out string? physicalIndex))
                     {
@@ -42,9 +54,10 @@ public sealed class GameResources
                         physicalSources.Add(chunkKey, physicalIndex);
                     }
                     if (physicalIndex is null) { unavailable.TryAdd(name, new(indexPath, entry)); continue; }
+                    if(physicalIndex!=indexPath)physicalFallbacks++;
                     if (unavailable.TryGetValue(name, out var newer))
-                        Validation.Require(newer.Resource.PayloadDigest.Length > 0 && newer.Resource.PayloadDigest == entry.PayloadDigest && newer.Resource.Length == entry.Length,
-                            "Available resource differs from missing newer cache content: " + name);
+                        if(!(newer.Resource.PayloadDigest.Length > 0 && newer.Resource.PayloadDigest == entry.PayloadDigest && newer.Resource.Length == entry.Length))
+                        { shadowedCopies++; continue; } // retain the unavailable higher-priority declaration; never silently use stale bytes
                     files.Add(name, new(physicalIndex, entry));
                 }
             }
@@ -52,11 +65,25 @@ public sealed class GameResources
         Manifest = NativeManifest.Read(new MemoryStream(manifest, false));
     }
 
+    public string[] MissingBundles(int root)
+    {
+        var queue = new Queue<int>(); var seen = new HashSet<int>(); var missing = new List<string>(); queue.Enqueue(root);
+        while (queue.TryDequeue(out int index)) {
+            if (!seen.Add(index)) continue;
+            Validation.Require(index >= 0 && index < Manifest.Bundles.Length && seen.Count <= 4096, "Invalid or excessive bundle closure");
+            var bundle = Manifest.Bundles[index];
+            if (!HasLogicalResource("Bundles/Windows/" + bundle.Name)) missing.Add(bundle.Name);
+            foreach (int dependency in bundle.Dependencies) queue.Enqueue(dependency);
+        }
+        return missing.ToArray();
+    }
+
     public IReadOnlyList<string> LoadClosure(int root)
     {
         var queue = new Queue<int>(); var visited = new HashSet<int>(); queue.Enqueue(root);
         while (queue.TryDequeue(out int current))
         {
+            OperationProgress.Report("resolve-dependencies", visited.Count, detail: "bundle:" + current);
             if (!visited.Add(current)) continue;
             Validation.Require(current >= 0 && current < Manifest.Bundles.Length && visited.Count <= 4096, "Invalid or excessive bundle closure");
             var bundle = Manifest.Bundles[current];
@@ -82,6 +109,7 @@ public sealed class GameResources
     {
         cab = Leaf(cab);
         if (documents.TryGetValue(cab, out var known)) return known;
+        OperationProgress.Report("decode-serialized-data", documents.Count, detail: cab);
         var locator = GetCab(cab);
         Validation.Require(documents.Count < 256 && decodedBytes + locator.Entry.Size <= 512L * 1024 * 1024, "Decoded CAB cache limit exceeded");
         using var archive = new VfsArchive(BlockIndex.Extract(locator.Source.Index, locator.Source.Resource));
@@ -138,20 +166,21 @@ public sealed class GameResources
         var bytes = archive.Extract(name); return bytes.AsSpan((int)offset, length).ToArray();
     }
 
-    public string[] LogicalNames => files.Keys.Order(StringComparer.Ordinal).ToArray();
-    // Temporary compatibility helper for the reconstructed native prefab stage.
-    // The catalog stage replaces this file with the alias-aware implementation.
-    public AddressResource SelectAddress(string path, string? hash = null)
+    public bool HasLogicalResource(string name)
     {
-        var matches = Manifest.Assets.Where(asset => asset.Path == path && (hash is null || asset.Hash.ToString("x16").Equals(hash, StringComparison.OrdinalIgnoreCase))).ToArray();
-        Validation.Require(matches.Length == 1, "Native resource address is absent or ambiguous: " + path);
-        return matches[0];
+        if(!files.TryGetValue(Normalize(name),out var source))return false;
+        var file=new FileInfo(Path.Combine(Path.GetDirectoryName(source.Index)!,source.Resource.Chunk));
+        return file.Exists&&source.Resource.Offset>=0&&source.Resource.Length>=0&&source.Resource.Offset<=file.Length-source.Resource.Length;
     }
+    public string[] LogicalNames => declarations.Keys.Order(StringComparer.Ordinal).ToArray();
+    public ResourceFileRecord? DeclaredSource(string name) => declarations.TryGetValue(Normalize(name),out var source)?new(Path.GetRelativePath(sourceRoot,source.Index).Replace('\\','/'),source.Resource):null;
     public ResourceFileRecord LogicalSource(string name) { var source = GetSource(name); return new(Path.GetRelativePath(sourceRoot, source.Index).Replace('\\','/'), source.Resource); }
+    public AddressResource SelectAddress(string path,string? hash=null)
+        => GameCatalog.ChooseAlias(Manifest.Assets.Where(address=>address.Path==path&&(hash is null||address.Hash.ToString("x16").Equals(hash,StringComparison.OrdinalIgnoreCase))),bundle=>MissingBundles(bundle).Length==0);
     public ResolvedAsset ResolveHash(long hash, int classId)
     {
-        var matches=Manifest.Assets.Where(a=>a.Hash==hash).DistinctBy(a=>(a.Hash,a.Path,a.Bundle)).ToArray();
-        Validation.Require(matches.Length==1,"Native resource hash absent or ambiguous: "+hash);return ResolveAddress(matches[0],classId);
+        var matches=Manifest.Assets.Where(a=>a.Hash==hash).DistinctBy(a=>(a.Hash,a.Path)).ToArray();
+        Validation.Require(matches.Length==1,"Native resource hash absent or ambiguous: "+hash);return ResolveAddress(SelectAddress(matches[0].Path,matches[0].Hash.ToString("x16")),classId);
     }
     public ResolvedAsset ResolveAddress(AddressResource address, int classId)
     {

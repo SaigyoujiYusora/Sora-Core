@@ -101,7 +101,13 @@ public static class NativeAnimationService
             double[] Rest(double[] v){var r=(double[])v.Clone();r[3]/=npcScale;r[7]/=npcScale;r[11]/=npcScale;return r;}
             bindingScene=scene with {Bones=scene.Bones.Select(b=>b with {Head=Unscale(b.Head),Tail=Unscale(b.Tail),RestMatrix=Rest(b.RestMatrix!)}).ToArray(),HeadReference=scene.HeadReference is {} head?head with{RestMatrix=Rest(head.RestMatrix)}:null};
         }
-        var conversion = NativeAnimationClip.Import(resources, resourcePath, rig, bindingScene, workerExecutable, selection);
+        // Only a clip already referenced by this character's own native controllers may keep unbound
+        // public-humanoid tracks. Verification is lazy: it runs only when such a mismatch exists.
+        string characterPrefab=asset.Locator?.Path??asset.Id;
+        bool SourceVerified(string cab,long pathId)=>characterPrefab.EndsWith("_uimodel.prefab",StringComparison.OrdinalIgnoreCase)
+            &&NativeAnimationClip.DiscoverControllerClips(resources,characterPrefab).Any(clip=>clip.ResourcePath==resourcePath
+                &&clip.Cab==cab&&clip.PathId==pathId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var conversion = NativeAnimationClip.Import(resources, resourcePath, rig, bindingScene, workerExecutable, selection, SourceVerified);
         if(npcScale!=1)conversion=conversion with {Clip=conversion.Clip with {Tracks=conversion.Clip.Tracks.Select(t=>t.Channel=="location"?t with {Keys=t.Keys.Select(k=>k with {Value=k.Value.Select(v=>v*npcScale).ToArray()}).ToArray()}:t).ToArray()}};
         Validation.Require(conversion.Clip.Native is not null && conversion.Clip.Native.Source is not null,
             "Native animation conversion did not retain its source metadata");
@@ -120,7 +126,7 @@ public static class NativeAnimationService
         return token.Length > 0 ? token : null;
     }
 
-    private static ResolvedAsset FaceAvatar(GameResources resources, FaceDriverRecord face)
+    internal static ResolvedAsset FaceAvatar(GameResources resources, FaceDriverRecord face)
     {
         var host = ResolveResource(resources, face.SourcePath, 114);
         Validation.Require(host.Cab == face.SourceCab && host.Object.Id == face.SourceObject,
@@ -131,7 +137,7 @@ public static class NativeAnimationService
         return avatar!;
     }
 
-    private static ResolvedAsset PrefabAvatar(GameResources resources, string resourcePath)
+    internal static ResolvedAsset PrefabAvatar(GameResources resources, string resourcePath)
     {
         var address = Address(resources, resourcePath);
         var animators = resources.LoadClosure(address.Bundle).SelectMany(cab =>
@@ -165,12 +171,12 @@ public static class NativeAnimationService
     private static AddressResource Address(GameResources resources, string path)
     {
         Validation.Require(!string.IsNullOrWhiteSpace(path) && path.Length <= 4096, "Select an exact native resource path");
-        var matches = resources.Manifest.Assets.Where(asset => asset.Path == path).DistinctBy(asset => (asset.Path, asset.Bundle)).ToArray();
+        var matches = resources.Manifest.Assets.Where(asset => asset.Path == path).DistinctBy(asset => (asset.Hash, asset.Path)).ToArray();
         Validation.Require(matches.Length == 1, "Native resource path is absent or ambiguous");
-        return matches[0];
+        return resources.SelectAddress(matches[0].Path,matches[0].Hash.ToString("x16"));
     }
 
-    private static bool HasHumanSkeleton(JsonElement avatar) => avatar.GetProperty("m_Avatar").GetProperty("m_Human").GetProperty("data")
+    internal static bool HasHumanSkeleton(JsonElement avatar) => avatar.GetProperty("m_Avatar").GetProperty("m_Human").GetProperty("data")
         .GetProperty("m_Skeleton").GetProperty("data").GetProperty("m_Node").GetProperty("Array").GetArrayLength() > 0;
     private static JsonElement Json(SerializedObject value) => JsonSerializer.SerializeToElement(value.Data, WireJson.Options);
 }
