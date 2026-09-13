@@ -177,6 +177,29 @@ internal static class HumanoidTests
             var parsed=DatabaseFile.ParsePayload(System.Text.Encoding.UTF8.GetBytes(legacy),1);if(parsed.Assets[0].Scene!.Clips[0].Native is not null)throw new Exception("Invented legacy native metadata");
             reject(()=>DatabaseFile.ParsePayload(System.Text.Encoding.UTF8.GetBytes(legacy.Replace("\"tracks\":[]","\"tracks\":[],\"native\":null")),1));
         });
+        test("unbound public native tracks are preserved verbatim and never shift later source tracks", () => {
+            var (clip,samples,root)=GapFixture();var binding=new NativeAnimationBinding(clip,samples,root);var bones=GapBones();var rig=GapRig();var scene=new SceneDocument("gap",bones,[],[],[]);
+            // A track missing on both sides still fails unless the clip is verified through the character controller.
+            reject(()=>NativeAnimationClip.Convert("gap",binding,rig,scene));
+            var result=NativeAnimationClip.Convert("gap",binding,rig,scene,()=>true).Clip;var unbound=result.Native!.UnboundTransformTracks!;
+            if(unbound.Length!=1||unbound[0].Path!=3001||unbound[0].SourceTrack!=1||!unbound[0].Position||!unbound[0].Rotation||!unbound[0].Scale)throw new Exception("Unbound native track identity changed");
+            if(unbound[0].Times.Length!=2||unbound[0].Times[0]!=0||Math.Abs(unbound[0].Times[1]-1/60d)>1e-12)throw new Exception("Unbound native track times changed");
+            if(unbound[0].Translations.Length!=2||unbound[0].Translations[0][0]!=(double).1f||unbound[0].Translations[0][1]!=(double).2f||unbound[0].Translations[0][2]!=(double).3f)throw new Exception("Unbound native track samples changed");
+            if(unbound[0].Rotations.Length!=2||unbound[0].Scales.Length!=2||!result.Native.Diagnostics.Any(x=>x.Contains("no target bone",StringComparison.Ordinal)))throw new Exception("Unbound native track was not diagnosed");
+            // The authored end sits past the decoded grid. Duration keeps it and the custom scalar keeps
+            // its two decoded samples (no fabricated key, no shortened clip).
+            if(Math.Abs(result.Duration-0.02)>1e-9||result.Native.CustomScalars.Single().Values.Length!=2||!result.Native.Diagnostics.Any(x=>x.Contains("inside the final decoded sample interval",StringComparison.Ordinal)))throw new Exception("Authored end past the grid was not kept");
+            // Matching short body/scalar samples may not be paired with an arbitrarily long duration.
+            reject(()=>Validation.Scene(scene with{Clips=[result with{Duration=.5,Native=result.Native! with{UnboundTransformTracks=null}}]}));
+            // Hash 1001 sits after the unbound gap in source order and must keep its own channel values.
+            var f=Matrix4x4.CreateScale(-1,1,1);var expected=f*Matrix4x4.CreateTranslation(new(.7f,.8f,.9f))*f;Matrix4x4.Decompose(expected,out var scale,out var rotation,out var location);
+            var tracks=result.Tracks.Where(t=>t.Bone==1).ToArray();if(tracks.Length!=3)throw new Exception("Bound track after an unbound gap is missing");
+            foreach(var track in tracks){if(track.Keys.Length!=2)throw new Exception("Bound track after an unbound gap lost samples");double[] values=track.Channel=="location"?[location.X,location.Y,location.Z]:track.Channel=="rotation"?[rotation.X,rotation.Y,rotation.Z,rotation.W]:[scale.X,scale.Y,scale.Z];
+                if(track.Keys.Any(k=>k.Value.Length!=values.Length||k.Value.Zip(values).Any(p=>Math.Abs(p.First-p.Second)>1e-5)))throw new Exception("Recovered channel does not belong to this bone: "+track.Channel);}
+            // One-sided identity is not an unbound public track and must still fail even when verified.
+            var paths=new Dictionary<uint,string>(rig.SourcePaths){[3001]="root/extra"};var parents=new Dictionary<uint,uint?>(rig.SourceParents){[3001]=0u};
+            reject(()=>NativeAnimationClip.Convert("gap",binding,Copy(rig,sourcePaths:paths,sourceParents:parents),scene,()=>true));
+        });
     }
 
     private static NativeHumanoidFrame Frame() => new(Vector3.Zero, Quaternion.Identity, new(.2f, 1, .3f), Quaternion.Identity, new float[61], new float[40]);
@@ -209,8 +232,43 @@ internal static class HumanoidTests
         return(JsonSerializer.SerializeToElement(json),new(1,15,2,60,values),new(1,21,2,60,roots));
     }
     private static void Near(Quaternion a, Quaternion b) { if (1 - Math.Abs(Quaternion.Dot(Quaternion.Normalize(a), Quaternion.Normalize(b))) > 1e-6) throw new Exception("Quaternion mismatch"); }
-    private static NativeHumanoidRig Copy(NativeHumanoidRig rig, NativeHumanNode[]? nodes = null, int[]? slots = null, float[]? masses = null, Vector4? policy = null)
-        => new(nodes ?? rig.Nodes.ToArray(), rig.Axes.ToArray(), slots ?? rig.HumanNodes.ToArray(), masses ?? rig.Masses.ToArray(), 1, policy ?? new(1, 0, 1, 0));
+    private static NativeHumanoidRig Copy(NativeHumanoidRig rig, NativeHumanNode[]? nodes = null, int[]? slots = null, float[]? masses = null, Vector4? policy = null,
+        IReadOnlyDictionary<uint, string>? sourcePaths = null, IReadOnlyDictionary<uint, uint?>? sourceParents = null)
+        => new(nodes ?? rig.Nodes.ToArray(), rig.Axes.ToArray(), slots ?? rig.HumanNodes.ToArray(), masses ?? rig.Masses.ToArray(), 1, policy ?? new(1, 0, 1, 0), sourcePaths, sourceParents);
+    /// <summary>22-node rig whose source identity carries 0 and 1001..1021 but never 3001.</summary>
+    private static NativeHumanoidRig GapRig()
+    {
+        var nodes=new NativeHumanNode[22];nodes[0]=new(-1,0,"",Vector3.Zero,Quaternion.Identity,-1);
+        for(int i=1;i<22;i++)nodes[i]=new(0,(uint)(1000+i),"root/bone"+i,new(i*.1f,0,0),Quaternion.Identity,0);
+        var masses=new float[25];masses[0]=1;
+        return new(nodes,[new(Quaternion.Identity,Quaternion.Identity,Vector3.One,-Vector3.One,Vector3.One)],[..Enumerable.Range(0,22),-1,-1,-1],masses,1,new(1,0,1,0));
+    }
+    private static BoneRecord[] GapBones()
+    {
+        var f=Matrix4x4.CreateScale(-1,1,1);var rest=Values(f*(f*Matrix4x4.CreateRotationX(MathF.PI/2)));
+        return GapRig().Nodes.Select(x=>new BoneRecord(x.Path.Length==0?"root":x.Path,x.Parent,[0,0,0],[0,.1,0],RestMatrix:rest,SourcePath:x.Path,SourceHash:x.PathHash)).ToArray();
+    }
+    /// <summary>Three generic transform tracks in source order 0, 3001, 1001 at two samples.</summary>
+    private static (JsonElement Clip,AclSamples Samples,AclSamples Root) GapFixture()
+    {
+        var bindings=new List<object>();
+        foreach(uint path in new uint[]{0u,3001u,1001u})foreach(uint attribute in new uint[]{1u,2u,3u})bindings.Add(new{path,attribute,typeID=4,customType=0,isPPtrCurve=0});
+        foreach(uint attribute in Enumerable.Range(0,14).Select(x=>(uint)x).Append(3452271111u))bindings.Add(new{path=0u,attribute,typeID=95,customType=attribute<143?8:0,isPPtrCurve=0});
+        var clip=JsonSerializer.SerializeToElement(new{m_aclType=16,m_SampleRate=60,m_MuscleClip=new{m_StartTime=0,m_StopTime=.02f,m_DeltaPose=new{m_DoFArray=new{Array=new float[61]}}},m_ClipBindingConstant=new{genericBindings=new{Array=bindings}},m_AclCompressedBuffer=new{Header=new{Version=10},OutputTrackCount=3,FloatCurveCount=15,RootPosIndex=0,RootRotIndex=0,RootScaleIndex=65535,RootTrackCount=21,m_DefaultIndexs=new{Array=System.Array.Empty<int>()},m_ConstantIndexs=new{Array=System.Array.Empty<int>()},m_ConstantValues=new{Array=System.Array.Empty<float>()},TransformSubTrackConstantMasks=new{Array=""},TransformSubTrackMasks=new{Array=Convert.ToBase64String([0xE0,0xE0,0xE0,0,0,0,0,0])}}});
+        var values=new float[2*45];var roots=new float[2*51];
+        for(int sample=0;sample<2;sample++)
+        {
+            int start=sample*45;
+            values[start+3]=1;values[start+7]=values[start+8]=values[start+9]=1;
+            values[start+13]=1;values[start+14]=.1f;values[start+15]=.2f;values[start+16]=.3f;values[start+17]=values[start+18]=values[start+19]=1;
+            values[start+23]=1;values[start+24]=.7f;values[start+25]=.8f;values[start+26]=.9f;values[start+27]=values[start+28]=values[start+29]=1;
+            values[start+30+6]=1;values[start+30+13]=1;values[start+30+14]=.5f;
+            int at=sample*51+30;System.Array.Copy(values,start,roots,sample*51,10);roots[at+6]=1;roots[at+13]=1;
+            for(int axis=0;axis<3;axis++)roots[at+14+axis]=values[start+4+axis];
+            for(int axis=0;axis<4;axis++)roots[at+17+axis]=values[start+axis];
+        }
+        return(JsonSerializer.SerializeToElement(clip),new(3,15,2,60,values),new(3,21,2,60,roots));
+    }
     private static NativeHumanoidRig Rig()
     {
         int[] parents = [-1, 0, 0, 1, 2, 3, 4, 0, 7, 8, 9, 10, 9, 9, 12, 13, 14, 15, 16, 17, 5, 6];
