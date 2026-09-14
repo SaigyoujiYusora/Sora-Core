@@ -9,6 +9,10 @@ dotnet run --project tests/Sora.Tests -c Release
 dotnet publish src/Sora.Cli/Sora.Cli.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish/win-x64
 ```
 
+`Sora-Core.sln` is the IDE entry point: it contains `src/Sora.Core`, `src/Sora.Cli` and
+`tests/Sora.Tests`, so a single IDE build covers all three projects. The commands above
+stay the verified path; `dotnet build Sora-Core.sln -c Release` builds the same set.
+
 On Windows the ordinary build produces `src/Sora.Cli/bin/Release/net10.0/Sora-Core.exe`.
 The publication directory contains `Sora-Core.exe`, its managed assemblies,
 configuration, the two native decoder libraries, notices and native ACL source.
