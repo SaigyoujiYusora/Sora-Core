@@ -2,6 +2,19 @@ using System.Text;
 using System.Text.Json;
 using Sora.Core;
 
+
+internal static class Program
+{
+    public static int Main(string[] args)
+    {
+        ProcessErrorMode.Configure();
+        try { return RunAsync(args).GetAwaiter().GetResult(); }
+        catch(Exception error) { Console.Error.WriteLine(error); return 1; }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<int> RunAsync(string[] args)
+    {
 Console.InputEncoding = new UTF8Encoding(false, true);
 Console.OutputEncoding = new UTF8Encoding(false);
 try
@@ -9,6 +22,11 @@ try
     if (args.Length == 1 && args[0] == "acl-worker")
     {
         AclCodec.RunWorker(Console.OpenStandardInput(), Console.Out);
+    }
+    else if (args.Length == 1 && args[0] is "rpc-task" or "rpc-task-session")
+    {
+        SessionDatabase.Enabled = args[0] == "rpc-task-session";
+        await TaskTransport.Run(Handle, SessionDatabase.Enabled);
     }
     else if (args.Length == 1 && args[0] == "rpc")
     {
@@ -69,7 +87,7 @@ try
         var database = DatabaseFile.Read(args[2]);
         var converted = NativeAnimationService.Import(resources, database, args[3], args[4],
             selection: args.Length == 8 ? new NativeAnimationSelection(args[6], args[7]) : null);
-        var asset = new Catalog(database).Get(args[3]);
+        var asset = Catalog.For(database).Get(args[3]);
         var scene = asset.Scene!;
         Validation.Require(!scene.Clips.Any(clip => clip.Name == converted.Clip.Name), "A clip with this name already exists in the database");
         var updated = asset with { Scene = scene with { Clips = [.. scene.Clips, converted.Clip] },
@@ -138,6 +156,10 @@ try
 catch (Exception exception)
 { Console.Error.WriteLine(exception.Message); Environment.ExitCode = 1; }
 
+
+        return Environment.ExitCode;
+    }
+
 static string Failure(string? id, string code, string message)
     => JsonSerializer.Serialize(new { protocol = 1, id, ok = false, error = new { code, message } }, WireJson.Options);
 
@@ -157,7 +179,62 @@ static string Handle(string line)
         var parameters = root.GetProperty("params");
         Validation.Require(parameters.ValueKind == JsonValueKind.Object, "Params must be an object");
         object result;
-        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.1.0", databaseVersions = new[] { 1, 2 }, methods = new[] { "capabilities", "map-status", "map-read", "inspect", "search", "closure", "scene", "animation-search", "animation-clips", "animation-import" }, nativeGameExtraction = true, nativeNpcExtraction = new { entryPoint = "CLI npc-search/import-npc", verifiedSelections = new[] { "npc_girl_efengineer_a_01" } }, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
+        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.2.0", assemblyInformationalVersion = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Program).Assembly)?.InformationalVersion, assemblyVersion = typeof(Program).Assembly.GetName().Version?.ToString(), build = new { sourceKind = "working-tree-candidate", sourceSnapshotFile = "source-snapshot.json" }, taskTransport = "rpc-task / rpc-task-session", cancellation = "session cancel requires targetId; one active request, extra requests return busy", databaseVersions = new[] { 1, 2, 3 }, methods = new[] { "game-validate", "database-build", "character-equipment", "equipment-assembly", "compatible-weapons", "weapon-assembly", "pose-map", "capabilities", "map-status", "map-read", "inspect", "search", "closure", "scene", "animation-search-page", "animation-search", "animation-clips", "animation-import", "equipment-animation-plan", "equipment-animation-bake", "equipment-skill-window-bake" }, nativeGameExtraction = true, nativeNpcExtraction = new { entryPoint = "CLI npc-search/import-npc", verifiedSelections = new[] { "npc_girl_efengineer_a_01" } }, equipmentAnimation = new { proofContract = NativeEquipmentAnimationService.ProofContract, transport = "animation-clips / animation-import with equipment selector", rig = "native-equipment-source-path", sampling = "non-ACL scalar blocks or ACL transform tracks on the authored native frame grid", runtime = "single controller layer; trigger and exit-time transitions with local TRS crossfade; no visibility or damping" }, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
+        else if (method == "game-validate" || method == "database-build")
+        {
+            var game = method == "game-validate" ? SessionGameResources.Read(parameters.GetProperty("root").GetString()!) : new GameResources(parameters.GetProperty("root").GetString()!);
+            if (method == "database-build") {
+                var database = GameCatalog.Build(game);
+                OperationProgress.Report("write-database");
+                var storage = DatabaseFile.WriteAtomicValidated(parameters.GetProperty("path").GetString()!, database);
+                result = new { database.GameVersion, assets = database.Assets.Length, database.CatalogSource, storage.FormatVersion, storage.PayloadBytes, storage.MaxPayloadBytes };
+            } else {
+                var stored = parameters.TryGetProperty("path", out var path) ? SessionDatabase.ReadValidated(path.GetString()!) : null;
+                bool matches = stored is null || GameCatalog.Matches(stored.Database, game);
+                result = new { game.Manifest.Version, manifestHash = game.Manifest.Hash, manifestRevision = game.Manifest.Revision, sourceSelection = game.SourceSelectionPolicy, cacheScope = "index bytes and physical range metadata; payload content checked on extraction",
+                    matches, databaseCompatibility = stored is null ? null : DatabaseCompatibilityPolicy.Inspect(stored.Database, game.Manifest.Version, matches), formatVersion = stored?.Storage.FormatVersion, payloadBytes = stored?.Storage.PayloadBytes, maxPayloadBytes = stored?.Storage.MaxPayloadBytes };
+            }
+        }
+        else if (method is "compatible-weapons" or "weapon-assembly")
+        {
+            var database=SessionDatabase.Read(parameters.GetProperty("path").GetString()!);string gameRoot=parameters.GetProperty("root").GetString()!;
+            var game=new GameResources(gameRoot);Validation.Require(database.CatalogSource is null||GameCatalog.Matches(database,game),"Game metadata changed; update the catalog");
+            string asset=parameters.GetProperty("asset").GetString()!;
+            result=method=="compatible-weapons" ? NativeWeaponAssembly.Compatible(game,database,asset,parameters.TryGetProperty("query",out var query)?query.GetString()??"":"",parameters.TryGetProperty("offset",out var offset)?offset.GetInt32():0,parameters.TryGetProperty("limit",out var limit)?limit.GetInt32():100)
+                : NativeWeaponAssembly.Resolve(game,database,asset,parameters.GetProperty("weapon").GetString()!,gameRoot);
+        }
+        else if (method == "equipment-assembly")
+        {
+            var database=SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var asset=Catalog.For(database).Get(parameters.GetProperty("asset").GetString()!);
+            string gameRoot=parameters.GetProperty("root").GetString()!;
+            var game=new GameResources(gameRoot);
+            Validation.Require(database.CatalogSource is null||GameCatalog.Matches(database,game),"Game metadata changed; rebuild the catalog");
+            var scene=asset.Scene??GameCatalog.Scene(database,asset.Id,gameRoot);
+            var assembly=NativeEquipmentAssembly.Resolve(game,scene,asset.Locator?.Path??asset.Id);
+            result=parameters.TryGetProperty("includeOwner",out var includeOwner)&&includeOwner.GetBoolean() ? new {scene,equipment=assembly} : (object)assembly;
+        }
+        else if (method == "pose-map")
+        {
+            var database=SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var asset=Catalog.For(database).Get(parameters.GetProperty("asset").GetString()!);
+            string gameRoot=parameters.GetProperty("root").GetString()!;
+            var game=new GameResources(gameRoot);
+            Validation.Require(database.CatalogSource is null || GameCatalog.Matches(database,game),"Game metadata changed; rebuild the catalog");
+            Validation.Require(database.ResourceIndex is null || database.ResourceIndex.ManifestHash==game.Manifest.Hash,"Game resources changed since scene import");
+            var scene=asset.Scene??GameCatalog.Scene(database,asset.Id,gameRoot);
+            OperationProgress.Report("map-native-pose");
+            result=NativePoseService.Map(game,scene,asset.Locator?.Path??asset.Id);
+        }
+        else if (method == "character-equipment")
+        {
+            var database=SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var asset=Catalog.For(database).Get(parameters.GetProperty("asset").GetString()!);
+            var game=new GameResources(parameters.GetProperty("root").GetString()!);
+            Validation.Require(database.CatalogSource is null || GameCatalog.Matches(database,game),"Game metadata changed; rebuild the catalog");
+            string identity=asset.Metadata?.RowId ?? Path.GetFileNameWithoutExtension(asset.Locator?.Path ?? asset.Id).Replace("_uimodel", "",StringComparison.Ordinal);
+            result=NativeCharacterEquipment.Read(game,identity);
+        }
         else if (method == "map-status") result = new PlaceholderMapDataReader().Status;
         else if (method == "map-read")
         {
@@ -165,59 +242,241 @@ static string Handle(string line)
                 ?? throw new InvalidDataException("Missing map request");
             result = new PlaceholderMapDataReader().Read(mapRequest);
         }
+        else if (method == "animation-search-page")
+        {
+            string animationRoot=parameters.GetProperty("root").GetString()!;string? character=null;
+            if(parameters.TryGetProperty("asset",out var selected)) {
+                var database=SessionDatabase.Read(parameters.GetProperty("path").GetString()!);var asset=Catalog.For(database).Get(selected.GetString()!);
+                var game=SessionGameResources.Read(animationRoot);Validation.Require(database.CatalogSource is null||GameCatalog.Matches(database,game),"Game metadata changed; update the catalog");
+                character=asset.Locator?.Path??asset.Id;
+            }
+            result=NativeAnimationCatalog.Page(SessionAnimationCatalog.Read(animationRoot,character),parameters.TryGetProperty("query",out var query)?query.GetString()??"":"",parameters.TryGetProperty("offset",out var offset)?offset.GetInt32():0,parameters.TryGetProperty("limit",out var limit)?limit.GetInt32():100,parameters.TryGetProperty("category",out var category)?category.GetString():null);
+        }
         else if (method == "animation-search")
         {
             var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
             string? character = null;
             if (parameters.TryGetProperty("asset", out var selected))
             {
-                var database = DatabaseFile.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
-                character = new Catalog(database).Get(selected.GetString()!).Id;
+                var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+                var asset = Catalog.For(database).Get(selected.GetString()!);
+                character = asset.Locator?.Path ?? asset.Id;
             }
             result = NativeAnimationService.Search(resources,
                 parameters.TryGetProperty("query", out var query) ? query.GetString() ?? "" : "", character,
                 parameters.TryGetProperty("limit", out var limit) ? limit.GetInt32() : 200);
         }
+        else if (method == "equipment-skill-window-bake")
+        {
+            // Bakes one SkillData-authored equipment window over the whole covered interval. The enter and end
+            // triggers come from the parsed skill timeline; the native state machine, its exit-time transition
+            // and the entered state own clip are the controller, so no gameplay state is fabricated.
+            var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+            var equipment = parameters.GetProperty("equipment").Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!;
+            var window = parameters.GetProperty("window").Deserialize<NativeEquipmentSkillWindow>(WireJson.Options)!;
+            string asset = parameters.GetProperty("asset").GetString()!, resource = parameters.GetProperty("resource").GetString()!;
+            result = NativeEquipmentAnimationService.BakeWindow(resources, database, asset, resource, equipment, window,
+                parameters.GetProperty("duration").GetDouble(), parameters.GetProperty("sampleRate").GetDouble(),
+                parameters.GetProperty("bodyClipId").GetString()!);
+        }
+        else if (method is "equipment-animation-plan" or "equipment-animation-bake")
+        {
+            var resources = new GameResources(parameters.GetProperty("root").GetString()!);
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var equipment = parameters.GetProperty("equipment").Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!;
+            var body = parameters.GetProperty("bodySelection").Deserialize<NativeAnimationSelection>(WireJson.Options)!;
+            string asset = parameters.GetProperty("asset").GetString()!, resource = parameters.GetProperty("resource").GetString()!;
+            result = method == "equipment-animation-plan"
+                ? (object)NativeEquipmentAnimationService.Plan(resources, database, asset, resource, equipment, body)
+                : NativeEquipmentAnimationService.Bake(resources, database, asset, resource, equipment, body);
+        }
         else if (method == "animation-clips")
         {
             var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
-            string? character = null;
-            if (parameters.TryGetProperty("asset", out var selected))
+            if (parameters.TryGetProperty("equipment", out var equipment))
             {
-                var database = DatabaseFile.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
-                character = new Catalog(database).Get(selected.GetString()!).Id;
+                var database = SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+                result = NativeEquipmentAnimationService.Discover(resources, database, parameters.GetProperty("asset").GetString()!,
+                    parameters.GetProperty("resource").GetString()!, equipment.Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!);
             }
-            result = NativeAnimationService.Discover(resources, parameters.GetProperty("resource").GetString()!, character);
+            else
+            {
+                string? character = null;
+                if (parameters.TryGetProperty("asset", out var selected))
+                {
+                    var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+                    var asset = Catalog.For(database).Get(selected.GetString()!);
+                    character = asset.Locator?.Path ?? asset.Id;
+                }
+                result = NativeAnimationService.Discover(resources, parameters.GetProperty("resource").GetString()!, character);
+            }
+        }
+        else if (method == "skill-equipment-windows")
+        {
+            // SkillData-driven dedicated equipment scheduling: parse the real skill resource, project its weapon
+            // animation actions onto equipment slots, then resolve those windows against each slot's own real
+            // equipment controller. Unknown union bodies stop the parse and are reported instead of being skipped.
+            var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+            string asset = parameters.GetProperty("asset").GetString()!, resource = parameters.GetProperty("resource").GetString()!;
+            string skill = parameters.GetProperty("skill").GetString() ?? throw new InvalidDataException("Missing skill logical name");
+            var timeline = NativeSkillAnimation.Read(resources.GetBytes(skill), skill);
+            // Every authored trigger is reported as authored. Slot identity is the authored weapon id, so a
+            // trigger is only ever named from the parameter table its own controller authors.
+            var authored = NativeSkillAnimation.EquipmentTriggers(timeline);
+            var selections = new List<(NativeEquipmentAnimationSelection Equipment, string Resource, string[] Names)>();
+            if (parameters.TryGetProperty("equipments", out var equipmentList))
+                foreach (var row in equipmentList.EnumerateArray())
+                    selections.Add((row.GetProperty("equipment").Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!,
+                        row.GetProperty("resource").GetString()!,
+                        row.TryGetProperty("parameters", out var names) ? names.EnumerateArray().Select(value => value.GetString()!).ToArray() : []));
+            else
+                selections.Add((parameters.GetProperty("equipment").Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!,
+                    resource, parameters.GetProperty("parameters").EnumerateArray().Select(value => value.GetString()!).ToArray()));
+            var slots = new List<object>();
+            var unresolved = new List<object>();
+            object? selectedSlotTriggers = null, selectedWindows = null;
+            int namedInCoveredSlots = 0;
+            foreach ((NativeEquipmentAnimationSelection selection, string selectionResource, string[] extraNames) in selections)
+            {
+                int slot = int.Parse(selection.SlotId[(selection.SlotId.LastIndexOf(':') + 1)..]);
+                // Parameter identities come from this slot's own resolved controller chain; caller-supplied
+                // names are an additional authored set, never a replacement for the slot's own identity.
+                string[] controllerNames = NativeEquipmentAnimationService.ParameterNames(resources, database, asset, selectionResource, selection);
+                var identities = NativeSkillAnimation.ParameterIdentities(controllerNames.Concat(extraNames));
+                var slotTriggers = NativeSkillAnimation.ResolveTriggerWindows(authored, identities)
+                    .Where(trigger => trigger.SlotId == slot).ToArray();
+                // An incomplete root parse means the equipment windows were never evaluated; callers must show
+                // that as "not evaluated", never as "this skill has no equipment animation".
+                var windows = timeline.Complete && slotTriggers.Any(trigger => trigger.TriggerName is not null)
+                    ? NativeEquipmentAnimationService.SkillWindows(resources, database, asset, selectionResource, selection,
+                        slotTriggers.Where(trigger => trigger.TriggerName is not null).ToArray())
+                    : [];
+                namedInCoveredSlots += slotTriggers.Count(trigger => trigger.TriggerName is not null);
+                foreach (var trigger in slotTriggers.Where(trigger => trigger.TriggerName is null))
+                    unresolved.Add(new { trigger.SlotId, bits = trigger.ParamBits.ToString(), trigger.StartFrame, trigger.EndFrame,
+                        reason = "bits-not-in-own-controller-names" });
+                selectedSlotTriggers ??= slotTriggers;
+                selectedWindows ??= windows;
+                slots.Add(new { selection.SlotId, slot, resource = selectionResource, animatorId = selection.AnimatorId,
+                    controllerId = selection.ControllerId, controllerNameCount = controllerNames.Length, slotTriggers,
+                    unresolved = slotTriggers.Where(trigger => trigger.TriggerName is null)
+                        .Select(trigger => new { trigger.SlotId, bits = trigger.ParamBits.ToString(), trigger.StartFrame, trigger.EndFrame }),
+                    windows });
+            }
+            int[] covered = selections.Select(selection => int.Parse(selection.Equipment.SlotId[(selection.Equipment.SlotId.LastIndexOf(':') + 1)..])).ToArray();
+            // A trigger on a slot no supplied equipment covers stays unevaluated: this diagnostic never claims
+            // that every authored trigger of the skill was resolved.
+            foreach (var trigger in authored.Where(trigger => !covered.Contains(trigger.SlotId)))
+                unresolved.Add(new { trigger.SlotId, bits = trigger.ParamBits.ToString(), trigger.StartFrame, trigger.EndFrame,
+                    reason = "slot-not-covered-by-supplied-equipment" });
+            // The authored montage name is the only link from this skill to a body clip: it is resolved through
+            // the character montage dictionary and the native manifest hash, never by matching resource names.
+            object bodyClips = "owner has no native character animation config";
+            var owner = Catalog.For(database).Get(asset);
+            string ownerPath = owner?.Locator?.Path ?? "";
+            // The native owner token is the character declaration id, so the uimodel suffix is stripped only
+            // after the native prefab identity is confirmed.
+            string? character = NativeAnimationService.CharacterToken(ownerPath) is not null
+                ? Path.GetFileNameWithoutExtension(ownerPath)[..^"_uimodel".Length] : null;
+            if (character is not null)
+            {
+                var declaration = NativeCharacterEquipment.Read(resources, character);
+                if (declaration.AnimationConfigPath is not null)
+                {
+                    var map = NativeAnimationMontageConfig.Read(resources.GetBytes(declaration.AnimationConfigPath), declaration.AnimationConfigPath);
+                    string[] keys = timeline.Elements
+                        .SelectMany(element => new[] { element.MontageName, element.ForceSyncMontage }
+                            .Concat(element.Actions.Select(action => action.AnimationName)))
+                        .Where(key => !string.IsNullOrEmpty(key)).Select(key => key!).Distinct(StringComparer.Ordinal).ToArray();
+                    bodyClips = new { map.Source, montagesComplete = map.MontagesComplete, map.ParsedBytes, map.UnparsedOffset,
+                        map.UnparsedReason, boneWeightMasks = map.BoneWeightMasks, controllerHash = map.ControllerHash, referencedKeys = keys,
+                        resolved = NativeAnimationMontageConfig.Resolve(resources, map, keys) };
+                }
+            }
+            result = new { skill, complete = timeline.Complete, windowsScope = timeline.WindowsScope,
+                incompleteReason = timeline.Complete ? null : "skill timeline not fully consumed: " + timeline.UnparsedReason,
+                timeline = new { timeline.Name, timeline.TimelineActionCount, elements = timeline.Elements.Length, timeline.ParsedBytes, timeline.UnparsedOffset, timeline.UnparsedReason },
+                triggers = authored, slots, slotTriggers = selectedSlotTriggers, windows = selectedWindows,
+                unresolvedTriggers = unresolved,
+                triggerDiagnostic = new { authored = authored.Length, namedInCoveredSlots, coveredSlots = covered,
+                    note = "each slot is named from its own controller; triggers outside the supplied slots are unevaluated, never resolved" },
+                bodyClips, weaponVisibility = NativeSkillAnimation.WeaponVisibility(timeline) };
+        }
+        else if (method == "animation-montages")
+        {
+            // The character AnimationConfig montage dictionary is the only authored link from a SkillData
+            // montage name to a body clip: key -> AnimationClipAsyncInfo hash -> unique manifest resource.
+            var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+            var owner = Catalog.For(database).Get(parameters.GetProperty("asset").GetString() ?? throw new InvalidDataException("Missing asset"));
+            string ownerPath = owner?.Locator?.Path ?? "";
+            string? character = NativeAnimationService.CharacterToken(ownerPath) is not null
+                ? Path.GetFileNameWithoutExtension(ownerPath)[..^"_uimodel".Length] : null;
+            Validation.Require(character is not null, "Montage map requires a catalog character owner with a native prefab identity");
+            var declaration = NativeCharacterEquipment.Read(resources, character!);
+            Validation.Require(declaration.AnimationConfigPath is not null, "Character has no native animation config");
+            var map = NativeAnimationMontageConfig.Read(resources.GetBytes(declaration.AnimationConfigPath!), declaration.AnimationConfigPath!);
+            string[] keys = parameters.TryGetProperty("keys", out var requested)
+                ? requested.EnumerateArray().Select(value => value.GetString()!).ToArray()
+                : map.Montages.Select(montage => montage.Key).ToArray();
+            result = new { source = map.Source, complete = map.MontagesComplete, parsedBytes = map.ParsedBytes,
+                unparsedOffset = map.UnparsedOffset, unparsedReason = map.UnparsedReason,
+                boneWeightMasks = map.BoneWeightMasks, controllerHash = map.ControllerHash, requested = keys.Length,
+                montages = map.Montages.Select(montage => new { montage.Key, montage.Kind, montage.Offset, montage.EndOffset,
+                    clips = montage.Clips.Select(clip => new { clip.Role, hash = clip.Hash.ToString(), hex = clip.Hash.ToString("x16"), clip.Length, clip.SampleRate, clip.IsLooping }) }),
+                resolved = NativeAnimationMontageConfig.Resolve(resources, map, keys) };
         }
         else if (method == "animation-import")
         {
             var resources = new GameResources(parameters.GetProperty("root").GetString() ?? throw new InvalidDataException("Missing game folder"));
-            var database = DatabaseFile.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing database path"));
             NativeAnimationSelection? selection = null;
             if (parameters.TryGetProperty("selection", out var selectedClip))
                 selection = new NativeAnimationSelection(selectedClip.GetProperty("cab").GetString()!, selectedClip.GetProperty("pathId").GetString()!);
-            result = NativeAnimationService.Import(resources, database, parameters.GetProperty("asset").GetString()!,
-                parameters.GetProperty("resource").GetString()!, parameters.TryGetProperty("avatar", out var avatar) ? avatar.GetString() : null,
-                selection: selection);
+            string assetId = parameters.GetProperty("asset").GetString()!;
+            if (parameters.TryGetProperty("equipment", out var equipment))
+            {
+                Validation.Require(!parameters.TryGetProperty("avatar", out _), "Equipment source binding does not accept an Avatar override");
+                result = NativeEquipmentAnimationService.Import(resources, database, assetId,
+                    parameters.GetProperty("resource").GetString()!, equipment.Deserialize<NativeEquipmentAnimationSelection>(WireJson.Options)!, selection!);
+            }
+            else
+            {
+                var indexedAsset = Catalog.For(database).Get(assetId);
+                if (indexedAsset.Scene is null) {
+                    var scene = GameCatalog.Scene(database, assetId, parameters.GetProperty("root").GetString());
+                    database = database with { Assets = [indexedAsset with { Id = indexedAsset.Locator!.Path, Scene = scene }] };
+                    assetId = indexedAsset.Locator!.Path;
+                }
+                result = NativeAnimationService.Import(resources, database, assetId,
+                    parameters.GetProperty("resource").GetString()!, parameters.TryGetProperty("avatar", out var avatar) ? avatar.GetString() : null,
+                    selection: selection);
+            }
         }
         else
         {
             Validation.Require(method is "inspect" or "search" or "closure" or "scene", "Unsupported method");
-            var database = DatabaseFile.Read(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing input path"));
-            var catalog = new Catalog(database);
+            var stored = SessionDatabase.ReadValidated(parameters.GetProperty("path").GetString() ?? throw new InvalidDataException("Missing input path"));
+            var database = stored.Database;
+            var catalog = Catalog.For(database);
             result = method switch
             {
-                "inspect" => new { database.GameVersion, assets = database.Assets.Length },
-                "search" => catalog.Search(parameters.TryGetProperty("query", out var query) ? query.GetString() ?? "" : "", parameters.TryGetProperty("offset", out var offset) ? offset.GetInt32() : 0, parameters.TryGetProperty("limit", out var limit) ? limit.GetInt32() : 100),
+                "inspect" => new { database.GameVersion, assets = database.Assets.Length, database.CatalogSource, stored.Storage.FormatVersion, stored.Storage.PayloadBytes, stored.Storage.MaxPayloadBytes },
+                "search" => catalog.Search(parameters.TryGetProperty("query", out var query) ? query.GetString() ?? "" : "", parameters.TryGetProperty("offset", out var offset) ? offset.GetInt32() : 0, parameters.TryGetProperty("limit", out var limit) ? limit.GetInt32() : 100, parameters.TryGetProperty("root", out var gameRoot) && !string.IsNullOrWhiteSpace(gameRoot.GetString()) ? SessionGameResources.Read(gameRoot.GetString()!) : null, parameters.TryGetProperty("kind", out var kind) ? kind.GetString() : null),
                 "closure" => catalog.Closure(parameters.GetProperty("asset").GetString()!),
-                "scene" => catalog.Get(parameters.GetProperty("asset").GetString()!).Scene ?? throw new InvalidDataException("Asset has no decoded scene"),
+                "scene" => GameCatalog.Scene(database, parameters.GetProperty("asset").GetString()!, parameters.TryGetProperty("root", out var sceneRoot) ? sceneRoot.GetString() : null),
                 _ => throw new InvalidDataException("Unsupported method")
             };
         }
         return JsonSerializer.Serialize(new { protocol = 1, id, ok = true, result }, WireJson.Options);
     }
+    catch (OperationCanceledException) { return Failure(id, "cancelled", "Task cancelled at a safe checkpoint"); }
     catch (Exception exception) when (exception is InvalidDataException or IOException or JsonException or ArgumentException or KeyNotFoundException or InvalidOperationException or UnauthorizedAccessException or OverflowException)
     { return Failure(id, exception is KeyNotFoundException ? "not_found" : "invalid_input", exception.Message); }
     catch (Exception)
     { return Failure(id, "internal_error", "The request could not be processed"); }
+}
+
 }
