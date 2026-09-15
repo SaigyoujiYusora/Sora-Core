@@ -1,17 +1,17 @@
 <Project>
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Deterministic>true</Deterministic>
-    <VersionPrefix>0.2.0</VersionPrefix>
-    <InformationalVersion>0.2.0-working-tree-candidate</InformationalVersion>
-    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <IsPackable>false</IsPackable>
-    <Authors>SaigyoujiYusora</Authors>
-  </PropertyGroup>
-  <Target Name="RejectCompositeNuGetPack" BeforeTargets="Pack;GenerateNuspec">
-    <Error Text="Sora-Core is published as a framework-dependent distribution with composite native notices. NuGet pack is unsupported; use dotnet publish and the release source/file manifests." />
-  </Target>
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <Deterministic>true</Deterministic>
+        <VersionPrefix>0.2.0</VersionPrefix>
+        <InformationalVersion>0.2.0-working-tree-candidate</InformationalVersion>
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+        <IsPackable>false</IsPackable>
+        <Authors>SaigyoujiYusora</Authors>
+    </PropertyGroup>
+    <Target Name="RejectCompositeNuGetPack" BeforeTargets="Pack;GenerateNuspec">
+        <Error Text="Sora-Core is published as a framework-dependent distribution with composite native notices. NuGet pack is unsupported; use dotnet publish and the release source/file manifests."/>
+    </Target>
 </Project>

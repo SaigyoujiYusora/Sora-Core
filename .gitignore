@@ -1,9 +1,25 @@
+# .NET build outputs and local SDK state
 bin/
 obj/
 artifacts/
 .dotnet/
+
+# Local temporary outputs and generated databases
+/TEMP/
+/--self-test/
 *.sredb
+*.sredb.*.tmp
+
+# Local IDE settings and caches
+/.idea/
+.vs/
 *.user
+*.suo
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
 
 # Local development history and recovery archives
 /history/
