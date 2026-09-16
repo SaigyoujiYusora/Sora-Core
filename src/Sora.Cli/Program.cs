@@ -179,7 +179,7 @@ static string Handle(string line)
         var parameters = root.GetProperty("params");
         Validation.Require(parameters.ValueKind == JsonValueKind.Object, "Params must be an object");
         object result;
-        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.2.0", assemblyInformationalVersion = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Program).Assembly)?.InformationalVersion, assemblyVersion = typeof(Program).Assembly.GetName().Version?.ToString(), build = new { sourceKind = "working-tree-candidate", sourceSnapshotFile = "source-snapshot.json" }, taskTransport = "rpc-task / rpc-task-session", cancellation = "session cancel requires targetId; one active request, extra requests return busy", databaseVersions = new[] { 1, 2, 3 }, methods = new[] { "game-validate", "database-build", "character-equipment", "equipment-assembly", "compatible-weapons", "weapon-assembly", "pose-map", "capabilities", "map-status", "map-read", "inspect", "search", "closure", "scene", "animation-search-page", "animation-search", "animation-clips", "animation-import", "equipment-animation-plan", "equipment-animation-bake", "equipment-skill-window-bake" }, nativeGameExtraction = true, nativeNpcExtraction = new { entryPoint = "CLI npc-search/import-npc", verifiedSelections = new[] { "npc_girl_efengineer_a_01" } }, equipmentAnimation = new { proofContract = NativeEquipmentAnimationService.ProofContract, transport = "animation-clips / animation-import with equipment selector", rig = "native-equipment-source-path", sampling = "non-ACL scalar blocks or ACL transform tracks on the authored native frame grid", runtime = "single controller layer; trigger and exit-time transitions with local TRS crossfade; no visibility or damping" }, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
+        if (method == "capabilities") result = new { product = "Sora-Core", version = "0.2.1", assemblyInformationalVersion = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Program).Assembly)?.InformationalVersion, assemblyVersion = typeof(Program).Assembly.GetName().Version?.ToString(), build = new { sourceKind = "working-tree-candidate", sourceSnapshotFile = "source-snapshot.json" }, taskTransport = "rpc-task / rpc-task-session", cancellation = "session cancel requires targetId; one active request, extra requests return busy", databaseVersions = new[] { 1, 2, 3 }, methods = new[] { "game-validate", "database-build", "character-equipment", "equipment-assembly", "compatible-weapons", "weapon-assembly", "pose-map", "capabilities", "map-status", "map-read", "inspect", "search", "closure", "scene", "animation-search-page", "animation-search", "animation-clips", "animation-import", "equipment-animation-plan", "equipment-animation-bake", "equipment-skill-window-bake", "skill-search" }, nativeGameExtraction = true, nativeNpcExtraction = new { entryPoint = "CLI npc-search/import-npc", verifiedSelections = new[] { "npc_girl_efengineer_a_01" } }, equipmentAnimation = new { proofContract = NativeEquipmentAnimationService.ProofContract, transport = "animation-clips / animation-import with equipment selector", rig = "native-equipment-source-path", sampling = "non-ACL scalar blocks or ACL transform tracks on the authored native frame grid", runtime = "single controller layer; trigger and exit-time transitions with local TRS crossfade; no visibility or damping" }, nativeExtraction = new { entryPoint = "CLI import-character; RPC animation-search/animation-clips/animation-import", geometry = true, materials = "native descriptors and textures", humanoidAnimation = true, animationContract = "Endfield native61, ACL wire version 10", authoredFaceControls = true, maps = false, verifiedCharacters = new[] { "azrila", "pelica", "wolfgd" } } };
         else if (method == "game-validate" || method == "database-build")
         {
             var game = method == "game-validate" ? SessionGameResources.Read(parameters.GetProperty("root").GetString()!) : new GameResources(parameters.GetProperty("root").GetString()!);
@@ -311,6 +311,21 @@ static string Handle(string line)
                 }
                 result = NativeAnimationService.Discover(resources, parameters.GetProperty("resource").GetString()!, character);
             }
+        }
+        else if (method == "skill-search")
+        {
+            var resources = new GameResources(parameters.GetProperty("root").GetString()!);
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var owner = Catalog.For(database).Get(parameters.GetProperty("asset").GetString()!);
+            string ownerPath = owner.Locator?.Path ?? "";
+            Validation.Require(NativeAnimationService.CharacterToken(ownerPath) is not null && ownerPath.EndsWith("_uimodel.prefab", StringComparison.OrdinalIgnoreCase),
+                "Skill search requires an imported character owner");
+            string character = Path.GetFileNameWithoutExtension(ownerPath)[..^"_uimodel".Length];
+            string prefix = "Json/SkillData/" + character + "_";
+            string query = parameters.TryGetProperty("query", out var filter) ? filter.GetString() ?? "" : "";
+            result = resources.LogicalNames.Where(name => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Select(name => new { name = name[prefix.Length..^5], resource = name }).ToArray();
         }
         else if (method == "skill-equipment-windows")
         {

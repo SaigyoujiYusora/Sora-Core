@@ -141,6 +141,24 @@ public static class NativeSkillAnimation
     /// Every entry excludes the four AbilityActionData base members, which are always read first.</summary>
     private static readonly Dictionary<int, string[]> VerifiedBodies = new()
     {
+        // JumpToAction.Data: Deserialize 0x183f28220 reads conditionAction (SequenceActionData),
+        // then destFrame (Int32), after the four base members; header is 6. This consumes the
+        // authored record, not a simulation of gameplay branching (GameAssembly c24495e5, 2026-09-16).
+        [217] = ["sequence", "int32"],
+        // 0x189296618 compares the stack-held header against 4 and reads only base members.
+        [69] = [],
+        // 0x183fcecb0: header 6, base4, SequenceActionData, TargetSettings.
+        [189] = ["sequence", "target"],
+        // 0x1892b0f4c: stack-held header 5, base4 then the authored string.
+        [317] = ["string"],
+        [5] = ["target"], // 0x18400d8e0, header 5: base4 + TargetSettings.
+        [276] = ["string", "blackboardInt", "target"],
+        [232] = [],
+        [96] = ["int32", "target"],
+        [11] = ["blackboardString", "target", "list:gameplayTag", "bool"],
+        [414] = ["unityAnimationCurve", "int32", "float", "unityAnimationCurve", "int32", "float",
+                 "float", "float", "string", "bool", "bool", "string", "list:string", "bool", "bool",
+                 "bool", "bool", "bool", "bool"],
         [66] = ["bool", "float", "bool", "bool", "target", "target"],
         [97] = ["target", "int32", "bool", "bool", "int32", "string"],
         [246] =
@@ -566,6 +584,10 @@ public static class NativeSkillAnimation
             case "raw12": reader.Skip(12); return;
             case "raw16": reader.Skip(16); return;
             case "blackboarddouble": BlackboardDouble(ref reader); return;
+            case "blackboardint":
+                if (!reader.Header(3)) return;
+                reader.String(); reader.Boolean(); reader.Int32();
+                return;
             case "blackboardstring":
                 if (!reader.Header(3)) return;
                 reader.String(); reader.Boolean(); reader.String();
@@ -705,7 +727,9 @@ public static class NativeSkillAnimation
                     // 0-member finders proved from their own wrapper deserializers: the object header must be
                     // 0 (0xff means null) and no member is read.
                     case 2: Header(0); break;   // CharacterTeamFinder, wrapper 0x183f50850
+                    case 1: Header(0); break;   // AllEnemyFinder, wrapper 0x1847aced0
                     case 10: Header(0); break;  // MainTargetFinder, wrapper 0x183ff0a70
+                    case 23: Header(0); break;  // TyphoeaArcherySelectedFinder, wrapper 0x1896c7c78
                     case 3:                     // FixedPointFinder
                         Validation.Require(Header(4), "FixedPointFinder layout differs from the confirmed header 4");
                         Skip(12); Skip(16); BlackboardDouble(ref this); Boolean();
@@ -730,10 +754,27 @@ public static class NativeSkillAnimation
             int validators = Int32();
             for (int index = 0; index < validators; index++)
             {
-                byte first = Byte();
-                if (first == 250) { first = (byte)(UInt16() & 0xFF); }
-                Validation.Require(first == 9, "Unimplemented selector validator union tag " + first + " at " + (At - 1));
-                Validation.Require(Header(0), "MainCharacterValidator layout differs from the confirmed header 0");
+                int first = Byte();
+                if (first == 250) first = UInt16();
+                if (first == 11)
+                {
+                    // TagValidator 0x183fea9f0: header 1, ReadValue<GameplayTagQuery> (MethodSpec 517659).
+                    if (Header(1)) Consume(ref this, "gameplayTagQuery");
+                }
+                else if (first == 4)
+                {
+                    // DistanceValidator 0x184515fe0: includeSourceBound, rangeType, distance.
+                    if (Header(3)) { Boolean(); Int32(); BlackboardDouble(ref this); }
+                }
+                else if (first == 7)
+                {
+                    Header(0); // InScreenValidator 0x1896c42b8 tests the header against zero; no members.
+                }
+                else
+                {
+                    Validation.Require(first == 9, "Unimplemented selector validator union tag " + first + " at " + (At - 1));
+                    Validation.Require(Header(0), "MainCharacterValidator layout differs from the confirmed header 0");
+                }
             }
         }
         private void RequireEmptyList(string label)

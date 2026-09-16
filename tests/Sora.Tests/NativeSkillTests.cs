@@ -21,6 +21,25 @@ static class NativeSkillTests
             var timeline=NativeSkillAnimation.Read(bytes,"fixture");
             if(timeline.Elements.Length!=1||timeline.UnparsedOffset!=117||!timeline.UnparsedReason!.Contains("99",StringComparison.Ordinal))throw new Exception("Unknown union tag was not reported at its exact offset");
         });
+        test("floating skill control records preserve the following weapon action boundary", () => {
+            var extra = new List<byte>();
+            void BaseRecord(int tag, byte header) {
+                if(tag < 250) extra.Add((byte)tag); else { extra.Add(250); extra.AddRange(BitConverter.GetBytes((ushort)tag)); }
+                extra.Add(header); extra.Add(1); I32(extra,0); I32(extra,0); I32(extra,7);
+            }
+            BaseRecord(217,6); extra.Add(3); I32(extra,0); extra.Add(0); extra.Add(0); I32(extra,45);
+            BaseRecord(69,4);
+            BaseRecord(317,5); Str(extra,"floating");
+            BaseRecord(189,6); extra.Add(3); I32(extra,0); extra.Add(0); extra.Add(0); extra.Add(255);
+            var bytes=AttackFixture(extraActions: extra.ToArray(), extraCount:4);
+            var timeline=NativeSkillAnimation.Read(bytes,"floating fixture");
+            if(!timeline.Complete||timeline.Elements[1].Actions.Length!=5||timeline.ParsedBytes!=bytes.Length)
+                throw new Exception("Floating action records drifted the timeline boundary");
+            var weapon=timeline.Elements[1].Actions[^1];
+            if(weapon.UnionTag!=54||weapon.WeaponId!=10||weapon.ParamAction!.ParamBits!=1844968592u)
+                throw new Exception("Following weapon identity was not preserved");
+            reject(()=>NativeSkillAnimation.Read(bytes[..^1],"truncated floating fixture"));
+        });
         test("native skill frames convert to runtime seconds and project onto equipment slots", () => {
             var timeline=NativeSkillAnimation.Read(AttackFixture(),"fixture");
             if(timeline.Elements.Any(element=>Math.Abs(element.StartTime-element.StartFrame/30.0)>1e-12||Math.Abs(element.EndTime-element.EndFrame/30.0)>1e-12))throw new Exception("Native frame to runtime second conversion changed");
@@ -62,7 +81,7 @@ static class NativeSkillTests
     private static void Param(List<byte> bytes,uint bits){bytes.Add(5);bytes.AddRange(BitConverter.GetBytes(bits));bytes.Add(1);F32(bytes,0);I32(bytes,0);I32(bytes,(int)bits==0?4:9);}
     private static void Force(List<byte> bytes){bytes.Add(4);bytes.Add(0);Str(bytes,"");F32(bytes,0);I32(bytes,0);}
 
-    private static byte[] AttackFixture(int weaponTag = 54)
+    private static byte[] AttackFixture(int weaponTag = 54, byte[]? extraActions = null, int extraCount = 0)
     {
         var bytes=new List<byte>{48,2};
         I32(bytes,0);
@@ -78,7 +97,8 @@ static class NativeSkillTests
         I32(bytes,0);
         Force(bytes);
         bytes.Add(4);I32(bytes,6);
-        bytes.Add(3);I32(bytes,1);
+        bytes.Add(3);I32(bytes,1+extraCount);
+        if(extraActions is not null)bytes.AddRange(extraActions);
         bytes.Add((byte)weaponTag);
         bytes.Add(12);bytes.Add(1);I32(bytes,0);I32(bytes,0);I32(bytes,70);
         bytes.Add(1);bytes.Add(0);
