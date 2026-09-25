@@ -17,7 +17,37 @@ public static class NativeEquipmentClipSampler
 
     public static INativeEquipmentClipSampler Create(JsonElement clip, NativeEquipmentAnimationBinding[] bindings,
         string? workerExecutable = null) =>
-        IsAcl(clip) ? new NativeEquipmentAclSampler(clip, bindings, workerExecutable) : new NativeGenericScalarSampler(clip);
+        IsAcl(clip) ? new NativeEquipmentAclSampler(clip, bindings, workerExecutable)
+            : new NativeEquipmentScalarSampler(new NativeGenericScalarSampler(clip), bindings);
+}
+
+/// <summary>Interpret scalar rotation channels as unit quaternions after cubic sampling.
+/// The underlying raw scalar reader remains unchanged for source-data inspection.</summary>
+public sealed class NativeEquipmentScalarSampler(INativeEquipmentClipSampler source, NativeEquipmentAnimationBinding[] bindings)
+    : INativeEquipmentClipSampler
+{
+    public double Duration => source.Duration;
+    public double? DenseSampleRate => source.DenseSampleRate;
+    public double[] Sample(double time)
+    {
+        var values = source.Sample(time);
+        Validation.Require(values.Length == bindings.Sum(b => b.Attribute == 2 ? 4 : 3), "Equipment scalar cardinality mismatch");
+        int offset = 0;
+        foreach (var binding in bindings)
+        {
+            int size = binding.Attribute == 2 ? 4 : 3;
+            if (size == 4 && binding.Bone >= 0)
+            {
+                double norm = values.Skip(offset).Take(4).Sum(v => v*v);
+                Validation.Require(double.IsFinite(norm) && norm > 1e-12,
+                    $"Non-ACL equipment quaternion is degenerate: path={binding.PathHash}, time={time:G17}");
+                double length = Math.Sqrt(norm);
+                for (int i = 0; i < 4; i++) values[offset+i] /= length;
+            }
+            offset += size;
+        }
+        return values;
+    }
 }
 
 /// <summary>

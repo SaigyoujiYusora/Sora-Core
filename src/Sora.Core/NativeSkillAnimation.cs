@@ -16,7 +16,7 @@ public sealed record NativeSkillAction(int UnionTag, long Offset, long EndOffset
     string? AnimationName = null, float? AnimationDuration = null, float? AnimationStartTime = null,
     float? AnimationPlaybackSpeed = null, NativeSkillAction[]? OnEndActions = null,
     bool? OnlyExecuteWhenSourceIsMainChar = null, bool? OnlyExecuteWhenSourceIsGuard = null,
-    NativeSkillWeaponVisibility? WeaponVisibility = null);
+    NativeSkillWeaponVisibility? WeaponVisibility = null, object?[]? Members = null);
 
 /// <summary>Authored weapon visibility written by a CharWeaponVisibleAction (union tag 55): the wire order is
 /// includeAllWeapons, overrideVFX, showVFX, vfxOverrideConfig, visible, weaponIndex. An empty VFX override does
@@ -86,7 +86,7 @@ public sealed record NativeSkillSlotTriggerWindow(int SlotId, int StartFrame, in
     uint ParamBits, string? TriggerName, bool ActionOnEnd, uint EndParamBits, string? EndTriggerName, bool ActionOnInterrupt,
     uint InterruptionParamBits, string? InterruptionTriggerName);
 
-public static class NativeSkillAnimation
+public static partial class NativeSkillAnimation
 {
     /// <summary>Struct wires whose member order is confirmed from the real 58/58 consumer delivery.</summary>
     private static readonly Dictionary<string, string[]> VerifiedStructs = new(StringComparer.OrdinalIgnoreCase)
@@ -141,6 +141,9 @@ public static class NativeSkillAnimation
     /// Every entry excludes the four AbilityActionData base members, which are always read first.</summary>
     private static readonly Dictionary<int, string[]> VerifiedBodies = new()
     {
+        // ObtainUspInNormalSkill.Data: wrapper 0x1845e9820 (GameAssembly c24495e5)
+        // verifies header 6, base4, then coefficient (BlackboardDouble) and source (TargetSettings).
+        [255] = ["blackboardDouble", "target"],
         // JumpToAction.Data: Deserialize 0x183f28220 reads conditionAction (SequenceActionData),
         // then destFrame (Int32), after the four base members; header is 6. This consumes the
         // authored record, not a simulation of gameplay branching (GameAssembly c24495e5, 2026-09-16).
@@ -510,8 +513,9 @@ public static class NativeSkillAnimation
         {
             Validation.Require(reader.Header(body.Length + 4), "Union body member count differs from the verified layout at byte " + reader.At);
             var (enable, level, priorityOffset, serverIndex) = Base(ref reader);
-            foreach (string kind in body) Consume(ref reader, kind);
-            return new(tag, offset, reader.At, enable, level, priorityOffset, serverIndex);
+            var members = new object?[body.Length];
+            for (int i = 0; i < body.Length; i++) members[i] = ReadMember(ref reader, body[i]);
+            return new(tag, offset, reader.At, enable, level, priorityOffset, serverIndex, Members: members);
         }
         throw new UnverifiedUnion($"Unimplemented union tag {tag} at {offset}; this build's layout is not verified here", offset);
     }

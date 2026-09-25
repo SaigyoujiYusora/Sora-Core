@@ -127,7 +127,7 @@ public static partial class NativeEquipmentAnimationService
     }
     public sealed record Conversion(ClipRecord Clip, double[] Times, NativeEquipmentAnimationBinding[] Bindings);
     public static NativeEquipmentAnimationBinding[] Bindings(JsonElement clip, NativeHierarchyNode[] nodes,
-        SceneDocument scene, string animatorPath)
+        SceneDocument scene, string animatorPath, bool preserveUnbound = false)
     {
         Validation.Require(nodes.Length is > 0 and <= 16384 && scene.Bones.Length is > 0 and <= 4096,
             "Equipment animation hierarchy/bone bounds exceeded");
@@ -150,7 +150,11 @@ public static partial class NativeEquipmentAnimationService
             { errors.Add("unsupported binding " + label); continue; }
             if (!seen.Add((hash, attribute))) { errors.Add("duplicate binding " + label); continue; }
             if (!paths.TryGetValue(hash, out var matches) || matches.Length != 1)
-            { errors.Add((matches is null ? "unmapped " : "ambiguous ") + label); continue; }
+            {
+                if (matches is null && preserveUnbound) result.Add(new(hash, attribute, -1, ""));
+                else errors.Add((matches is null ? "unmapped " : "ambiguous ") + label);
+                continue;
+            }
             var bones = scene.Bones.Select((bone, i) => (bone, i)).Where(x => x.bone.SourcePath == matches[0].SourcePath).ToArray();
             if (bones.Length != 1) { errors.Add("outside or ambiguous imported rig " + label + " sourcePath=" + matches[0].SourcePath); continue; }
             result.Add(new(hash, attribute, bones[0].i, matches[0].SourcePath));

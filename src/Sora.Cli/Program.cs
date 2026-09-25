@@ -327,6 +327,15 @@ static string Handle(string line)
                 && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 .Select(name => new { name = name[prefix.Length..^5], resource = name }).ToArray();
         }
+        else if (method == "skill-clip-index")
+        {
+            var resources = SessionGameResources.Read(parameters.GetProperty("root").GetString()!);
+            var database = SessionDatabase.Read(parameters.GetProperty("path").GetString()!);
+            var owner = Catalog.For(database).Get(parameters.GetProperty("asset").GetString()!);
+            string ownerPath = owner.Locator?.Path ?? "";
+            Validation.Require(ownerPath.EndsWith("_uimodel.prefab", StringComparison.Ordinal), "Skill index requires a character owner");
+            result = NativeSkillClipIndex.Read(resources, Path.GetFileNameWithoutExtension(ownerPath)[..^"_uimodel".Length]);
+        }
         else if (method == "skill-equipment-windows")
         {
             // SkillData-driven dedicated equipment scheduling: parse the real skill resource, project its weapon
@@ -417,7 +426,8 @@ static string Handle(string line)
                 unresolvedTriggers = unresolved,
                 triggerDiagnostic = new { authored = authored.Length, namedInCoveredSlots, coveredSlots = covered,
                     note = "each slot is named from its own controller; triggers outside the supplied slots are unevaluated, never resolved" },
-                bodyClips, weaponVisibility = NativeSkillAnimation.WeaponVisibility(timeline) };
+                bodyClips, weaponVisibility = NativeSkillAnimation.WeaponVisibility(timeline),
+                projectilePreview = character is null ? null : NativeSkillFlight.Resolve(resources, character, timeline) };
         }
         else if (method == "animation-montages")
         {

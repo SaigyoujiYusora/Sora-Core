@@ -8,7 +8,8 @@ public sealed record NativeEquipmentTimelineSegment(double Time, int State, stri
 public sealed record NativeEquipmentTimelineProof(NativeEquipmentAnimationIdentity Identity, string BodyClipId,
     double Duration, double SampleRate, double[] Times, NativeEquipmentTimelineSegment[] Segments,
     NativeWeaponAnimationEvent[] Events, string Scope = "single-layer leaf states; trigger and unconditional exit transitions; local TRS crossfade; no visibility or game montage gating",
-    string ProofContract = "native-equipment-timeline-v1");
+    string ProofContract = "native-equipment-timeline-v1", NativeEquipmentUnboundSamples[]? UnboundChannels = null);
+public sealed record NativeEquipmentUnboundSamples(string ClipId, uint PathHash, int Attribute, double[] Times, double[][] Values);
 public sealed record NativeEquipmentTimelineLoad(ClipRecord Clip, BoneRecord[] Bones, NativeEquipmentTimelineProof Equipment);
 
 /// <summary>One equipment state window authored by a skill trigger. Scope is component level: the source
@@ -203,8 +204,29 @@ public static partial class NativeEquipmentAnimationService
         // Only states with authored motion own a decoded sample source; a rest state contributes the
         // imported rest pose itself and is never given a fabricated clip.
         var motion=required.Where(i=>!work.States[i].Motionless).ToArray();
-        var bindings=motion.ToDictionary(i=>i,i=>Bindings(work.States[i].ClipData,context.Nodes,scene,context.Identity.AnimatorSourcePath));
+        var bindings=motion.ToDictionary(i=>i,i=>Bindings(work.States[i].ClipData,context.Nodes,scene,context.Identity.AnimatorSourcePath,preserveUnbound:true));
         var samplers=motion.ToDictionary(i=>i,i=>NativeEquipmentClipSampler.Create(work.States[i].ClipData,bindings[i]));
+        var unbound = new List<NativeEquipmentUnboundSamples>();
+        foreach (int index in motion.Where(i => bindings[i].Any(b => b.Bone < 0)))
+        {
+            double rate = work.States[index].ClipData.GetProperty("m_SampleRate").GetDouble();
+            double duration = samplers[index].Duration;
+            Validation.Require(duration*rate <= 100000, "Unbound equipment sample budget exceeded");
+            var times = Enumerable.Range(0,(int)Math.Ceiling(duration*rate)+1).Select(i=>Math.Min(i/rate,duration)).ToArray();
+            Validation.Require((long)times.Length * bindings[index].Sum(b => b.Attribute == 2 ? 4 : 3) <= 10_000_000,
+                "Unbound equipment scalar sample budget exceeded");
+            var samples = times.Select(samplers[index].Sample).ToArray();
+            int offset = 0;
+            foreach (var binding in bindings[index])
+            {
+                int size = binding.Attribute == 2 ? 4 : 3;
+                if (binding.Bone < 0)
+                    unbound.Add(new(NativePrefabHierarchy.Identity(work.States[index].Clip!.Clip),binding.PathHash,
+                        binding.Attribute,times,samples.Select(v=>v[offset..(offset+size)]).ToArray()));
+                offset += size;
+            }
+        }
+        if (unbound.Count > 0) plan = plan with { UnboundChannels = unbound.ToArray() };
         (Vector3 Position,Quaternion Rotation,Vector3 Scale)[] Pose(int index,double entered,double offset,double time) {
             if(work.States[index].Motionless)return Enumerable.Repeat((Vector3.Zero,Quaternion.Identity,Vector3.One),scene.Bones.Length).ToArray();
             var state=work.States[index];double local=offset+(time-entered)*state.Speed;
@@ -213,7 +235,8 @@ public static partial class NativeEquipmentAnimationService
             // may sit a few float32 ULPs beyond it. Never ask a source past its own decoded end.
             local=Math.Min(local,samplers[index].Duration);
             var values=samplers[index].Sample(local);int at=0;
-            var channels=bindings[index].Select(b=>{int size=b.Attribute==2?4:3;var c=new NativeEquipmentDefaultPoseReader.Channel(b.PathHash,b.Attribute,values[at..(at+size)]);at+=size;return c;}).ToArray();
+            var channels=bindings[index].Select(b=>{int size=b.Attribute==2?4:3;var c=new NativeEquipmentDefaultPoseReader.Channel(b.PathHash,b.Attribute,values[at..(at+size)]);at+=size;return (b,c);})
+                .Where(pair=>pair.b.Bone>=0).Select(pair=>pair.c).ToArray();
             return NativeEquipmentDefaultPoseReader.ConvertPose(context.Nodes,scene,context.Identity.AnimatorSourcePath,channels).Select(b=>{
                 var a=b.BasisMatrix;var matrix=new Matrix4x4((float)a[0],(float)a[4],(float)a[8],(float)a[12],(float)a[1],(float)a[5],(float)a[9],(float)a[13],(float)a[2],(float)a[6],(float)a[10],(float)a[14],(float)a[3],(float)a[7],(float)a[11],(float)a[15]);
                 Validation.Require(Matrix4x4.Decompose(matrix,out var scale,out var rotation,out var position),"Equipment blend basis is not TRS");

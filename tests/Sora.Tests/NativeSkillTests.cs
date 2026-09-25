@@ -6,6 +6,41 @@ static class NativeSkillTests
 {
     public static void Run(Action<string, Action> test, Action<Action> reject)
     {
+        test("opening skill extended tag 255 preserves the subsequent weapon trigger", () => {
+            var extra = new List<byte> { 250,255,0,6,1 };
+            I32(extra,0); I32(extra,0); I32(extra,0);
+            extra.Add(3); Str(extra,""); extra.Add(0); F32(extra,.5f); // coefficient
+            extra.Add(255); // nullable source TargetSettings, not an action union tag
+            var bytes=AttackFixture(extraActions:extra.ToArray(),extraCount:1);
+            var parsed=NativeSkillAnimation.Read(bytes,"opening fixture");
+            if(!parsed.Complete || parsed.ParsedBytes!=bytes.Length || parsed.Elements[1].Actions[0].UnionTag!=255
+                || NativeSkillAnimation.EquipmentTriggers(parsed).Single().SlotId!=10)
+                throw new Exception("Extended action tag was confused with null or shifted the next action");
+            extra[3]=7;
+            reject(()=>NativeSkillAnimation.Read(AttackFixture(extraActions:extra.ToArray(),extraCount:1),"bad opening header"));
+        });
+        test("buff visual prefix rejects truncated maps and does not scan tail bytes", () => {
+            var b = new List<byte> { 30 };
+            I32(b,0); b.Add(255); I32(b,0); // no ability actions, null cooldown, no tags
+            b.Add(2); I32(b,0); b.Add(0); I32(b,0); // empty modifiers and blackboard
+            I32(b,1); b.Add(2); I32(b,0); I32(b,5); // event map with no action sequences
+            var valid = b.ToArray();
+            if (NativeSkillAnimation.ReadBuffWeaponVisuals(valid).Length != 0) throw new Exception("Invented buff visual");
+            reject(() => NativeSkillAnimation.ReadBuffWeaponVisuals(valid[..^1]));
+            b.AddRange([162,18,1,55,10,11]); // unparsed tail must never be searched for action-looking bytes
+            if (NativeSkillAnimation.ReadBuffWeaponVisuals(b.ToArray()).Length != 0) throw new Exception("Scanned buff tail");
+        });
+        test("nested skill branches retain payload without executing disabled ancestors", () => {
+            NativeSkillAction Leaf(int tag) => new(tag, 10, 20, true, 0, 0, 0, Members: ["source-id"]);
+            var root = new NativeSkillAction(201, 0, 30, true, 0, 0, 0,
+                Members: [false, new NativeSkillSequence([Leaf(222)], false, false),
+                    new NativeSkillSequence([Leaf(146)], false, false)]);
+            var rows = NativeSkillAnimation.Descendants(root).ToArray();
+            if (rows.Length != 3 || rows[1].Branch == rows[2].Branch || rows[1].Action.Members![0]?.ToString() != "source-id")
+                throw new Exception("Nested payload or branch identity was lost");
+            if (NativeSkillAnimation.Descendants(root with { IsEnable = false }).Count() != 1)
+                throw new Exception("Disabled parent leaked launch declarations");
+        });
         test("native SkillData root chain decodes timeline frames and weapon actions", () => {
             var timeline = NativeSkillAnimation.Read(AttackFixture(), "fixture");
             if(timeline.PassiveEventActionCount!=0||timeline.TimelineActionCount!=2||timeline.Elements.Length!=2||timeline.UnparsedOffset is not null)throw new Exception("SkillData prefix was not consumed continuously");

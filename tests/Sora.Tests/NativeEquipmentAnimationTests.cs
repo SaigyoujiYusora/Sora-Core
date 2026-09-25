@@ -22,6 +22,13 @@ public static class NativeEquipmentAnimationTests
     }
     public static void Run(Action<string,Action> test,Action<Action> reject)
     {
+        test("equipment pose sampling normalizes interpolated rotation scalars without changing translation",()=>{
+            var sampler=new NativeEquipmentScalarSampler(new RotationSamples(),[
+                new(0,1,0,"Root"),new(0,2,0,"Root")]);
+            var mid=sampler.Sample(.5);
+            if(mid[0]!=3 || Math.Abs(mid.Skip(3).Sum(x=>x*x)-1)>1e-12 || Math.Abs(mid[3]-mid[6])>1e-12)
+                throw new Exception("Sampled quaternion was not normalized independently of translation");
+        });
         var f=Matrix4x4.CreateScale(-1,1,1);var space=f*Matrix4x4.CreateRotationX(MathF.PI/2);var m=f*space;
         double[] rest=[m.M11,m.M21,m.M31,m.M41,m.M12,m.M22,m.M32,m.M42,m.M13,m.M23,m.M33,m.M43,m.M14,m.M24,m.M34,m.M44];
         NativeHierarchyNode[] nodes=[new(null!,null!,"Item",-1,"Item",Matrix4x4.Identity,Matrix4x4.Identity)];
@@ -33,6 +40,14 @@ public static class NativeEquipmentAnimationTests
             if(rows.Length!=2||!rows.Select(r=>r.Attribute).SequenceEqual(new[]{1,2})||rows.Any(r=>r.PathHash!=0||r.SourcePath!="Item"||r.Resolution!="native-path"||r.TypeId!=4||r.CustomType!=0||r.IsPPtrCurve!=0))throw new Exception("Discovery lost binding schema");
             var bindings=NativeEquipmentAnimationService.Bindings(E(Fixture()),nodes,scene,"Item");
             if(!rows.Select(r=>(r.PathHash,r.Attribute,r.SourcePath)).SequenceEqual(bindings.Select(r=>(r.PathHash,r.Attribute,(string?)r.SourcePath))))throw new Exception("Discovery/import source bindings differ");
+        });
+        test("equipment timeline retains unresolved scalar slots without shifting mapped channels",()=>{
+            var n=Fixture(); n["m_ClipBindingConstant"]!["genericBindings"]!["Array"]![0]!["path"]=123456u;
+            var bound=NativeEquipmentAnimationService.Bindings(E(n),nodes,scene,"Item",preserveUnbound:true);
+            if(bound.Length!=2||bound[0].Bone!=-1||bound[0].PathHash!=123456||bound[1].Bone!=0||bound[1].Attribute!=2)
+                throw new Exception("Unbound channel changed mapped scalar offsets");
+            var sample=NativeEquipmentClipSampler.Create(E(n),bound).Sample(.5);
+            if(Math.Abs(sample[6]-1)>1e-12)throw new Exception("Mapped rotation shifted into unbound position values");
         });
         test("equipment discovery exposes unknown unsupported and duplicate source bindings without inventing mapping",()=>{
             var n=Fixture();var rows=n["m_ClipBindingConstant"]!["genericBindings"]!["Array"]!.AsArray();rows[0]!["path"]=123456u;rows[0]!["typeID"]=23;rows.Add(rows[0]!.DeepClone());
@@ -77,4 +92,11 @@ public static class NativeEquipmentAnimationTests
             reject(()=>NativeEquipmentAnimationService.Bindings(E(Fixture()),ambiguous,scene,"Item"));
         });
     }
+}
+
+file sealed class RotationSamples : INativeEquipmentClipSampler
+{
+    public double Duration => 1;
+    public double? DenseSampleRate => null;
+    public double[] Sample(double time) => [3,4,5,time,0,0,1-time];
 }
